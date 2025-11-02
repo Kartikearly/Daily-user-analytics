@@ -10,11 +10,22 @@ jobs:
   run-script:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # 1. Checks out your repository code
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 2. Sets up the Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      # 3. Installs libraries (if requirements.txt exists)
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          
+      # 4. Runs your Python script (THIS IS THE CORRECTED LINE)
       - name: Run script
-        run: earlyfit_email_report.py
+        run: python earlyfit_email_report.py
