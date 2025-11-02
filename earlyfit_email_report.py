@@ -574,6 +574,8 @@ EMAIL_CONFIG = {
 # Recipients List
 RECIPIENTS = [
     'kartik@early.fit',
+    'sagar@early.fit',
+    'diksha@early.fit',
 ]
 
 # ============================================================================
