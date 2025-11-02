@@ -1,0 +1,20 @@
+name: Run Daily Mail Script
+
+on:
+  schedule:
+    # Runs at 10:35 UTC (which is 4:05 PM IST)
+    - cron: '35 10 * * *'
+  workflow_dispatch: # Lets you run it manually
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run script
+        run: python mail_script.py
