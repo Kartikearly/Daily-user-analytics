@@ -27,5 +27,8 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           
       # 4. Aapki script run karta hai
-      - name: Run script
+      - name: Run User Analytics Email Report
         run: python earlyfit_email_report.py
+      
+      - name: Run Dogfooding Email Report
+        run: python dogfooding_mail.py
