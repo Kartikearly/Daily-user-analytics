@@ -568,14 +568,12 @@ EMAIL_CONFIG = {
     'subject': f'Quick Summary and analytics for current users - {datetime.now().strftime("%Y-%m-%d")}',
     'title': 'EarlyFit User Analytics',
     'greeting': 'Dear Team,<br><br>Please find today\'s data report below.',
-    'closing': 'EarlyFit Product Team'
+    'closing': 'Regards,<br><br>EarlyFit Product Team'
 }
 
 # Recipients List
 RECIPIENTS = [
     'kartik@early.fit',
-    'sagar@early.fit',
-    'diksha@early.fit',
 ]
 
 # ============================================================================

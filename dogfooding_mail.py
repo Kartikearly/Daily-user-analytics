@@ -167,14 +167,12 @@ EMAIL_CONFIG = {
     'subject': f'Dogfooding Analytics - {datetime.now().strftime("%Y-%m-%d")}',
     'title': 'Dogfooding Analytics',
     'greeting': 'Dear Team,<br><br>Please find below the dogfooding analytics for our team members.',
-    'closing': 'EarlyFit Product Team'
+    'closing': 'Regards,<br><br>EarlyFit Product Team'
 }
 
 # Recipients List
 RECIPIENTS = [
     'kartik@early.fit',
-    'sagar@early.fit',
-    'diksha@early.fit',
 ]
 
 # ============================================================================
