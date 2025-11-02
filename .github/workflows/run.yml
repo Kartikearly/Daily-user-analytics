@@ -2,8 +2,8 @@ name: Run Daily Mail Script
 
 on:
   schedule:
-    # Runs at 10:48 UTC (which is 4:18 PM IST)
-    - cron: '48 10 * * *'
+    # Runs at 4:30 UTC (which is 10:00 AM IST)
+    - cron: '30 4 * * *'
   workflow_dispatch: # Isse aap manually bhi run kar sakte hain
 
 jobs:
