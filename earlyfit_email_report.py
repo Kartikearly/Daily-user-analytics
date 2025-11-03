@@ -559,9 +559,9 @@ EMAIL_CONFIG = {
     # SMTP Server Settings
     'smtp_host': 'smtp.gmail.com',
     'smtp_port': 587,
-    'smtp_username': 'kartikgupta0043@gmail.com',
-    'smtp_password': 'atdfvirejgizafaw',
-    'from_email': 'kartikgupta0043@gmail.com',
+    'smtp_username': 'kartik@Early.fit',
+    'smtp_password': 'gsbpbfxpabmwjhkc',
+    'from_email': 'kartik@early.fit',
     'from_name': 'EarlyFit User Analytics',
     
     # Email Content
@@ -573,7 +573,7 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'kartik@early.fit',
+    'patient_ops@early.fit',
 ]
 
 # ============================================================================
