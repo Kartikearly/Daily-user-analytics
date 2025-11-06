@@ -32,3 +32,6 @@ jobs:
       
       - name: Run Dogfooding Email Report
         run: python dogfooding_mail.py
+      
+      - name: Run Leads Mail Report
+        run: python leads_mail.py
