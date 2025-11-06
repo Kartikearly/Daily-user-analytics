@@ -25,14 +25,14 @@ from io import StringIO
 # ============================================================================
 
 # API Configuration
-BASE_URL = "https://earlyfit-api-staging.saurabhsakhuja.com/api/v1"
+BASE_URL = "https://earlyfit-api.saurabhsakhuja.com/api/v1"
 API_KEY = "eyJhbGciOi"  # Update with the API key value from your tech team's env variable
 
 # SQL Queries to execute - Each tuple is (heading, query)
 SQL_QUERIES = [
     ("Summary Comparison", """
 WITH
-    coach_app_report AS (
+    coach_app_report_today AS (
         WITH
             patient_base AS (
                 SELECT p.id, p.start_weight, p.goal_weight, p.target_duration, p.subscription_start_date
@@ -40,6 +40,7 @@ WITH
                 JOIN "public"."subscriptions" AS s ON p.active_subscription_id = s.id
                 WHERE
                     p."isActive" = true AND p.status = 'ACTIVE_SUBSCRIPTION' AND s.type = 'Coach+App'
+                    AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
                     AND LOWER(TRIM(p.firstname)) NOT IN (
                         'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
                         'parushi', 'bhaumik', 'archana', 'mrinal'
@@ -96,7 +97,7 @@ WITH
         LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
         LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
     ),
-    glp_report AS (
+    glp_report_today AS (
         WITH
             patient_base AS (
                 SELECT p.id, p.start_weight, p.goal_weight, p.target_duration, p.subscription_start_date
@@ -104,6 +105,7 @@ WITH
                 JOIN "public"."subscriptions" AS s ON p.active_subscription_id = s.id
                 WHERE
                     p."isActive" = true AND p.status = 'ACTIVE_SUBSCRIPTION' AND s.type = 'GLP'
+                    AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
                     AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
                     AND LOWER(TRIM(p.firstname)) NOT IN (
                         'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
@@ -160,41 +162,216 @@ WITH
         LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
         LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
         LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
+    ),
+    coach_app_report_yesterday AS (
+        WITH
+            patient_base AS (
+                SELECT p.id, p.start_weight, p.goal_weight, p.target_duration, p.subscription_start_date
+                FROM "public"."patients" AS p
+                JOIN "public"."subscriptions" AS s ON p.active_subscription_id = s.id
+                WHERE
+                    p."isActive" = true AND p.status = 'ACTIVE_SUBSCRIPTION' AND s.type = 'Coach+App'
+                    AND ( (CURRENT_DATE - INTERVAL '1 day')::date - p.subscription_start_date::date ) >= 7
+                    AND LOWER(TRIM(p.firstname)) NOT IN (
+                        'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
+                        'parushi', 'bhaumik', 'archana', 'mrinal'
+                    )
+                    AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
+                    AND p.nutritionist_id IN (8, 18)
+            ),
+            onboarding_status AS (
+                SELECT pb.id AS patient_id,
+                    CASE
+                        WHEN (pb.start_weight IS NOT NULL AND pb.goal_weight IS NOT NULL)
+                        AND EXISTS (SELECT 1 FROM "public"."metrics" m WHERE m.patient_id = pb.id AND m.name = 'BODY_FAT' AND m.date::date < CURRENT_DATE)
+                        AND EXISTS (SELECT 1 FROM "public"."patientfoodlogs" pfl WHERE pfl.patient_id = pb.id AND pfl.date::date < CURRENT_DATE)
+                        THEN 'Yes' ELSE 'No'
+                    END AS user_onboarded
+                FROM patient_base pb
+            ),
+            last_consultant_interaction AS (
+                SELECT patient_id, ((CURRENT_DATE - INTERVAL '1 day')::date - MAX(date)::date) AS days_since_last_interaction
+                FROM "public"."patientnotes" WHERE date::date < CURRENT_DATE GROUP BY patient_id
+            ),
+            meal_log_last_3_days AS (
+                SELECT patient_id, 'Yes' AS logged_in_last_3_days
+                FROM "public"."patientfoodlogs" WHERE date::date >= (CURRENT_DATE - INTERVAL '1 day')::date - INTERVAL '3 days' AND date::date < CURRENT_DATE GROUP BY patient_id
+            ),
+            latest_weight AS (
+                SELECT patient_id, value AS current_weight
+                FROM (SELECT patient_id, value, ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY date DESC, "createdAt" DESC) AS rn FROM "public"."metrics" WHERE name = 'BODY_WEIGHT' AND date::date < CURRENT_DATE) sub
+                WHERE rn = 1
+            ),
+            weight_log_last_7_days AS (
+                SELECT patient_id, 'Yes' AS logged_in_last_7_days
+                FROM (SELECT patient_id, value, ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY date DESC, "createdAt" DESC) AS rn FROM "public"."metrics" WHERE name = 'BODY_WEIGHT' AND date::date >= (CURRENT_DATE - INTERVAL '1 day')::date - INTERVAL '7 days' AND date::date < CURRENT_DATE) sub
+                WHERE rn = 1
+            )
+        SELECT
+            os.user_onboarded,
+            lci.days_since_last_interaction,
+            COALESCE(mll3d.logged_in_last_3_days, 'No') AS last_3_days_meal_log,
+            CASE
+                WHEN lw.current_weight IS NULL OR pb.start_weight IS NULL OR pb.goal_weight IS NULL OR pb.target_duration IS NULL OR pb.target_duration <= 0 OR pb.subscription_start_date IS NULL THEN 'Data Incomplete'
+                WHEN pb.start_weight <= pb.goal_weight THEN 'Goal Achieved or Invalid'
+                ELSE
+                    CASE
+                        WHEN (pb.start_weight - lw.current_weight) >= (((pb.start_weight - pb.goal_weight) / NULLIF(pb.target_duration,0)) * GREATEST(0, ( (CURRENT_DATE - INTERVAL '1 day')::date - pb.subscription_start_date::date ))) THEN 'On Track'
+                        ELSE 'Off Track'
+                    END
+            END AS on_track_status,
+            COALESCE(wll7d.logged_in_last_7_days, 'No') AS logged_weight_last_7_days
+        FROM patient_base pb
+        LEFT JOIN onboarding_status os ON pb.id = os.patient_id
+        LEFT JOIN last_consultant_interaction lci ON pb.id = lci.patient_id
+        LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
+        LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
+        LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
+    ),
+    glp_report_yesterday AS (
+        WITH
+            patient_base AS (
+                SELECT p.id, p.start_weight, p.goal_weight, p.target_duration, p.subscription_start_date
+                FROM "public"."patients" AS p
+                JOIN "public"."subscriptions" AS s ON p.active_subscription_id = s.id
+                WHERE
+                    p."isActive" = true AND p.status = 'ACTIVE_SUBSCRIPTION' AND s.type = 'GLP'
+                    AND ( (CURRENT_DATE - INTERVAL '1 day')::date - p.subscription_start_date::date ) >= 7
+                    AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
+                    AND LOWER(TRIM(p.firstname)) NOT IN (
+                        'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
+                        'parushi', 'bhaumik', 'archana', 'mrinal'
+                    )
+                    AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
+                    AND p.nutritionist_id IN (8, 18)
+            ),
+             onboarding_status AS (
+                SELECT pb.id AS patient_id,
+                    CASE
+                        WHEN (pb.start_weight IS NOT NULL AND pb.goal_weight IS NOT NULL)
+                        AND EXISTS (SELECT 1 FROM "public"."metrics" m WHERE m.patient_id = pb.id AND m.name = 'BODY_FAT' AND m.date::date < CURRENT_DATE)
+                        AND EXISTS (SELECT 1 FROM "public"."patientfoodlogs" pfl WHERE pfl.patient_id = pb.id AND pfl.date::date < CURRENT_DATE)
+                        THEN 'Yes' ELSE 'No'
+                    END AS user_onboarded
+                FROM patient_base pb
+            ),
+            last_consultant_interaction AS (
+                SELECT patient_id, ((CURRENT_DATE - INTERVAL '1 day')::date - MAX(date)::date) AS days_since_last_interaction
+                FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL AND date::date < CURRENT_DATE GROUP BY patient_id
+            ),
+            meal_log_last_3_days AS (
+                SELECT patient_id, 'Yes' AS logged_in_last_3_days
+                FROM "public"."patientfoodlogs" WHERE date::date >= (CURRENT_DATE - INTERVAL '1 day')::date - INTERVAL '3 days' AND date::date < CURRENT_DATE GROUP BY patient_id
+            ),
+            latest_weight AS (
+                SELECT patient_id, value AS current_weight
+                FROM (SELECT patient_id, value, ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY date DESC, "createdAt" DESC) AS rn FROM "public"."metrics" WHERE name = 'BODY_WEIGHT' AND date::date < CURRENT_DATE) sub
+                WHERE rn = 1
+            ),
+            weight_log_last_7_days AS (
+                SELECT patient_id, 'Yes' AS logged_in_last_7_days
+                FROM (SELECT patient_id, value, ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY date DESC, "createdAt" DESC) AS rn FROM "public"."metrics" WHERE name = 'BODY_WEIGHT' AND date::date >= (CURRENT_DATE - INTERVAL '1 day')::date - INTERVAL '7 days' AND date::date < CURRENT_DATE) sub
+                WHERE rn = 1
+            )
+        SELECT
+            os.user_onboarded,
+            lci.days_since_last_interaction,
+            COALESCE(mll3d.logged_in_last_3_days, 'No') AS last_3_days_meal_log,
+            CASE
+                WHEN lw.current_weight IS NULL OR pb.start_weight IS NULL OR pb.goal_weight IS NULL OR pb.target_duration IS NULL OR pb.target_duration <= 0 OR pb.subscription_start_date IS NULL THEN 'Data Incomplete'
+                WHEN pb.start_weight <= pb.goal_weight THEN 'Goal Achieved or Invalid'
+                ELSE
+                    CASE
+                        WHEN (pb.start_weight - lw.current_weight) >= (((pb.start_weight - pb.goal_weight) / NULLIF(pb.target_duration,0)) * GREATEST(0, ( (CURRENT_DATE - INTERVAL '1 day')::date - pb.subscription_start_date::date ))) THEN 'On Track'
+                        ELSE 'Off Track'
+                    END
+            END AS on_track_status,
+            COALESCE(wll7d.logged_in_last_7_days, 'No') AS logged_weight_last_7_days
+        FROM patient_base pb
+        LEFT JOIN onboarding_status os ON pb.id = os.patient_id
+        LEFT JOIN last_consultant_interaction lci ON pb.id = lci.patient_id
+        LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
+        LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
+        LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
+    ),
+    final_counts AS (
+        SELECT
+            1 AS sort_order,
+            'Number of Paid Users' AS "Metric",
+            (SELECT COUNT(*) FROM coach_app_report_today) AS coach_today,
+            (SELECT COUNT(*) FROM coach_app_report_yesterday) AS coach_yesterday,
+            (SELECT COUNT(*) FROM glp_report_today) AS glp_today,
+            (SELECT COUNT(*) FROM glp_report_yesterday) AS glp_yesterday
+        UNION ALL
+        SELECT
+            2 AS sort_order,
+            'Num Completely not onboarded' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE user_onboarded = 'No') FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE user_onboarded = 'No') FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE user_onboarded = 'No') FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE user_onboarded = 'No') FROM glp_report_yesterday)
+        UNION ALL
+        SELECT
+            3 AS sort_order,
+            'Num On Track Users' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'On Track') FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'On Track') FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'On Track') FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'On Track') FROM glp_report_yesterday)
+        UNION ALL
+        SELECT
+            4 AS sort_order,
+            'Num Off Track Users' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'Off Track') FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'Off Track') FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'Off Track') FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE on_track_status = 'Off Track') FROM glp_report_yesterday)
+        UNION ALL
+        SELECT
+            5 AS sort_order,
+            'Num users with no interaction in last 5 days' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM glp_report_yesterday)
+        UNION ALL
+        SELECT
+            6 AS sort_order,
+            'Num users with no meal log in last 3 days' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE last_3_days_meal_log = 'No') FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE last_3_days_meal_log = 'No') FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE last_3_days_meal_log = 'No') FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE last_3_days_meal_log = 'No') FROM glp_report_yesterday)
+        UNION ALL
+        SELECT
+            7 AS sort_order,
+            'Num users with no weight log in last 7 days' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE logged_weight_last_7_days = 'No') FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE logged_weight_last_7_days = 'No') FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE logged_weight_last_7_days = 'No') FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE logged_weight_last_7_days = 'No') FROM glp_report_yesterday)
     )
 SELECT
-    'Number of Paid Users' AS "Metric",
-    (SELECT COUNT(*) FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FROM glp_report) AS "GLP"
-UNION ALL
-SELECT
-    'Num Completely not onboarded' AS "Metric",
-    (SELECT COUNT(*) FILTER (WHERE user_onboarded = 'No') FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FILTER (WHERE user_onboarded = 'No') FROM glp_report) AS "GLP"
-UNION ALL
-SELECT
-    'Num On Track Users' AS "Metric",
-    (SELECT COUNT(*) FILTER (WHERE on_track_status = 'On Track') FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FILTER (WHERE on_track_status = 'On Track') FROM glp_report) AS "GLP"
-UNION ALL
-SELECT
-    'Num Off Track Users' AS "Metric",
-    (SELECT COUNT(*) FILTER (WHERE on_track_status = 'Off Track') FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FILTER (WHERE on_track_status = 'Off Track') FROM glp_report) AS "GLP"
-UNION ALL
-SELECT
-    'Num users with no interaction in last 5 days' AS "Metric",
-    (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM glp_report) AS "GLP"
-UNION ALL
-SELECT
-    'Num users with no meal log in last 3 days' AS "Metric",
-    (SELECT COUNT(*) FILTER (WHERE last_3_days_meal_log = 'No') FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FILTER (WHERE last_3_days_meal_log = 'No') FROM glp_report) AS "GLP"
-UNION ALL
-SELECT
-    'Num users with no weight log in last 7 days' AS "Metric",
-    (SELECT COUNT(*) FILTER (WHERE logged_weight_last_7_days = 'No') FROM coach_app_report) AS "Coach + App",
-    (SELECT COUNT(*) FILTER (WHERE logged_weight_last_7_days = 'No') FROM glp_report) AS "GLP";
+    fc."Metric",
+    (
+        fc.coach_today::text ||
+        ' (' ||
+        CASE WHEN (fc.coach_today - fc.coach_yesterday) >= 0 THEN '+' ELSE '' END ||
+        (fc.coach_today - fc.coach_yesterday)::text ||
+        ')'
+    ) AS "Coach + App (vs Yesterday)",
+    
+    (
+        fc.glp_today::text ||
+        ' (' ||
+        CASE WHEN (fc.glp_today - fc.glp_yesterday) >= 0 THEN '+' ELSE '' END ||
+        (fc.glp_today - fc.glp_yesterday)::text ||
+        ')'
+    ) AS "GLP (vs Yesterday)"
+FROM
+    final_counts fc
+ORDER BY
+    fc.sort_order;
     """),
     
     ("Coach +App User analytics", """
@@ -211,6 +388,7 @@ WITH
             p."isActive" = true
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND s.type = 'Coach+App'
+            AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
             AND LOWER(TRIM(p.firstname)) NOT IN (
                 'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
                 'parushi', 'bhaumik', 'archana', 'mrinal'
@@ -265,11 +443,7 @@ WITH
     activity_summary AS (
         SELECT
             patient_id,
-            MAX(interaction_date) AS last_active_day,
-            COUNT(DISTINCT CASE
-                WHEN interaction_date >= CURRENT_DATE - INTERVAL '7 days' THEN interaction_date
-                ELSE NULL
-            END) AS active_days_last_7
+            MAX(interaction_date) AS last_active_day
         FROM all_patient_interactions
         GROUP BY patient_id
     )
@@ -322,6 +496,7 @@ WITH
             p."isActive" = true
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND s.type = 'GLP'
+            AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
             AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
             AND LOWER(TRIM(p.firstname)) NOT IN (
                 'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
@@ -377,11 +552,7 @@ WITH
     activity_summary AS (
         SELECT
             patient_id,
-            MAX(interaction_date) AS last_active_day,
-            COUNT(DISTINCT CASE
-                WHEN interaction_date >= CURRENT_DATE - INTERVAL '7 days' THEN interaction_date
-                ELSE NULL
-            END) AS active_days_last_7
+            MAX(interaction_date) AS last_active_day
         FROM all_patient_interactions
         GROUP BY patient_id
     )
@@ -417,7 +588,7 @@ LEFT JOIN
 LEFT JOIN
     weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
 LEFT JOIN
-    activity_summary act ON pb.id = act.patient_id;
+    activity_summary act ON pb.id = act.patient_id;     
     """),
     
     ("Full Analytics", """
@@ -432,6 +603,7 @@ WITH
             p."isActive" = true
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND s.type = 'Coach+App'
+            AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
             AND LOWER(TRIM(p.firstname)) NOT IN (
                 'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
                 'parushi', 'bhaumik', 'archana', 'mrinal'
@@ -449,6 +621,7 @@ WITH
             p."isActive" = true
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND s.type = 'GLP'
+            AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
             AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
             AND LOWER(TRIM(p.firstname)) NOT IN (
                 'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
@@ -521,11 +694,11 @@ SELECT
     CASE WHEN om."Goals Set" = 'Yes' AND om."Smart Scale Logged" = 'Yes' AND om."Meal Logged" = 'Yes' THEN 'Yes' ELSE 'No' END AS "User Onboarded",
     pb.subscription_start_date AS "Subscription Start Date",
     (CURRENT_DATE - pb.subscription_start_date::date) AS "Days since Subscription Start",
-    ROUND(pb.start_weight::numeric, 2) AS "Start Weight",
-    ROUND(pb.goal_weight::numeric, 2) AS "Goal Weight",
-    ROUND(lw.current_weight::numeric, 2) AS "Current Weight",
-    ROUND((((pb.start_weight - pb.goal_weight) / NULLIF(pb.target_duration, 0)) * GREATEST(0, (CURRENT_DATE - pb.subscription_start_date::date)))::numeric, 2) AS "On Track Weight Lose",
-    ROUND((pb.start_weight - lw.current_weight)::numeric, 2) AS "Current Weight Lose",
+    pb.start_weight AS "Start Weight",
+    pb.goal_weight AS "Goal Weight",
+    lw.current_weight AS "Current Weight",
+    (((pb.start_weight - pb.goal_weight) / NULLIF(pb.target_duration, 0)) * GREATEST(0, (CURRENT_DATE - pb.subscription_start_date::date))) AS "On Track Weight Lose",
+    (pb.start_weight - lw.current_weight) AS "Current Weight Lose",
     CASE
         WHEN lw.current_weight IS NULL OR pb.start_weight IS NULL OR pb.goal_weight IS NULL OR pb.target_duration IS NULL OR pb.target_duration <= 0 OR pb.subscription_start_date IS NULL THEN 'Data Incomplete'
         WHEN pb.start_weight <= pb.goal_weight THEN 'Goal Achieved or Invalid'
