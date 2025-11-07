@@ -77,7 +77,7 @@ EMAIL_CONFIG = {
 RECIPIENTS = [
     'productearly@early.fit', 
     'naman@early.fit',
-    'priyansh@early.fit',
+    'priya@early.fit',
 ]
 
 # ============================================================================
