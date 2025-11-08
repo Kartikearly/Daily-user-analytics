@@ -4,6 +4,8 @@ on:
   schedule:
     # Runs at 4:30 UTC (which is 10:00 AM IST)
     - cron: '30 4 * * *'
+    # Runs at 0:30 UTC (which is 6:00 AM IST) for Leads Mail Report
+    - cron: '30 0 * * *'
   workflow_dispatch: # Isse aap manually bhi run kar sakte hain
 
 jobs:
@@ -32,6 +34,35 @@ jobs:
       
       - name: Run Dogfooding Email Report
         run: python dogfooding_mail.py
+
+  run-leads-mail:
+    runs-on: ubuntu-latest
+    # Ye job sirf 6 AM IST (0:30 UTC) par chalega
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
+      - name: Check if it's 6 AM IST (0:30 UTC)
+        id: check_time
+        run: |
+          CURRENT_HOUR=$(date -u +%H)
+          # 6 AM IST = 0:30 UTC, so check if hour is 0
+          if [ "$CURRENT_HOUR" -eq 0 ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+          
       - name: Run Leads Mail Report
+        if: steps.check_time.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
         run: python leads_mail.py
