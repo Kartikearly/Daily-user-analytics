@@ -11,6 +11,7 @@ Usage: python earlyfit_email_report.py
 
 import requests
 import json
+import os
 import smtplib
 import csv
 import sys
@@ -19,14 +20,18 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from io import StringIO
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
 # API Configuration
-BASE_URL = "https://earlyfit-api.saurabhsakhuja.com/api/v1"
-API_KEY = "eyJhbGciOi"  # Update with the API key value from your tech team's env variable
+BASE_URL = os.getenv("BASE_URL")
+API_KEY = os.getenv("API_KEY")
 
 # SQL Queries to execute - Each tuple is (heading, query)
 SQL_QUERIES = [
@@ -730,11 +735,11 @@ ORDER BY "Subscription Type", "Patient Name";
 # Email Configuration
 EMAIL_CONFIG = {
     # SMTP Server Settings
-    'smtp_host': 'smtp.gmail.com',
-    'smtp_port': 587,
-    'smtp_username': 'kartik@Early.fit',
-    'smtp_password': 'gsbpbfxpabmwjhkc',
-    'from_email': 'kartik@early.fit',
+    'smtp_host': os.getenv("SMTP_HOST", "smtp.gmail.com"),
+    'smtp_port': int(os.getenv("SMTP_PORT", "587")),
+    'smtp_username': os.getenv("SMTP_USERNAME"),
+    'smtp_password': os.getenv("SMTP_PASSWORD"),
+    'from_email': os.getenv("FROM_EMAIL"),
     'from_name': 'EarlyFit User Analytics',
     
     # Email Content
@@ -746,7 +751,7 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'patient_ops@early.fit',
+    'kabirgupta609@gmail.com',
 ]
 
 # ============================================================================
@@ -1139,18 +1144,30 @@ def validate_config():
     """Validate that configuration is set up correctly"""
     errors = []
     
-    if EMAIL_CONFIG['smtp_username'] == 'your-email@gmail.com':
-        errors.append("  - Update EMAIL_CONFIG['smtp_username'] with your email")
+    # Validate API Configuration
+    if not API_KEY or API_KEY.strip() == '':
+        errors.append("  - API_KEY is not set in .env file")
     
-    if EMAIL_CONFIG['smtp_password'] == 'your-app-password':
-        errors.append("  - Update EMAIL_CONFIG['smtp_password'] with your password/app password")
+    if not BASE_URL or BASE_URL.strip() == '':
+        errors.append("  - BASE_URL is not set in .env file")
     
-    if EMAIL_CONFIG['from_email'] == 'your-email@gmail.com':
-        errors.append("  - Update EMAIL_CONFIG['from_email'] with your email")
+    # Validate Email Configuration
+    if not EMAIL_CONFIG['smtp_username'] or EMAIL_CONFIG['smtp_username'].strip() == '':
+        errors.append("  - SMTP_USERNAME is not set in .env file")
     
-    if not RECIPIENTS or RECIPIENTS[0] == 'recipient1@example.com':
+    if not EMAIL_CONFIG['smtp_password'] or EMAIL_CONFIG['smtp_password'].strip() == '':
+        errors.append("  - SMTP_PASSWORD is not set in .env file")
+    
+    if not EMAIL_CONFIG['from_email'] or EMAIL_CONFIG['from_email'].strip() == '':
+        errors.append("  - FROM_EMAIL is not set in .env file")
+    
+    # Validate Recipients
+    if not RECIPIENTS or len(RECIPIENTS) == 0:
         errors.append("  - Add recipient email addresses to RECIPIENTS list")
+    elif RECIPIENTS[0] == 'recipient1@example.com':
+        errors.append("  - Update RECIPIENTS list with actual email addresses")
     
+    # Validate SQL Queries
     if not SQL_QUERIES or len(SQL_QUERIES) == 0:
         errors.append("  - Add SQL queries to SQL_QUERIES list")
     
@@ -1170,7 +1187,7 @@ def main():
         print("="*60)
         print("CONFIGURATION REQUIRED")
         print("="*60)
-        print("Please update the following settings in earlyfit_email_report.py:\n")
+        print("Please update the following settings in .env file:\n")
         for error in config_errors:
             print(error)
         print("\nOnce configured, run the script again.")
