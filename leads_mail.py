@@ -79,7 +79,9 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'kabirgupta609@gmail.com',
+    'sales_ops@early.fit', 
+    
+    
 ]
 
 # ============================================================================
