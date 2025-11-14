@@ -187,6 +187,7 @@ EMAIL_CONFIG = {
 # Recipients List
 RECIPIENTS = [
     'team@early.fit',
+    
 ]
 
 # ============================================================================
