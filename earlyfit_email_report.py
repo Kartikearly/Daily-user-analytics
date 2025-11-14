@@ -752,6 +752,7 @@ EMAIL_CONFIG = {
 # Recipients List
 RECIPIENTS = [
     'patient_ops@early.fit',
+    'parth@early.fit',
 ]
 
 # ============================================================================

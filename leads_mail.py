@@ -80,8 +80,7 @@ EMAIL_CONFIG = {
 # Recipients List
 RECIPIENTS = [
     'sales_ops@early.fit', 
-    
-    
+    'parth@early.fit',
 ]
 
 # ============================================================================
