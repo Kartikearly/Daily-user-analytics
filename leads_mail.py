@@ -1,6 +1,6 @@
 """
 EarlyFit Sales Email Report System
-Complete solution for querying database and sending email reports
+Complete solution for querying database, updating Google Sheets, and sending email reports
 
 Usage: python sales_mail.py
 """
@@ -22,6 +22,12 @@ from email.mime.multipart import MIMEMultipart
 from io import StringIO
 from dotenv import load_dotenv
 
+# === [NEW] Added Google Sheets Imports ===
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+# =========================================
+
 # Load environment variables
 load_dotenv()
 
@@ -31,7 +37,7 @@ load_dotenv()
 
 # API Configuration
 BASE_URL = os.getenv("BASE_URL", "https://earlyfit-api.saurabhsakhuja.com/api/v1")
-API_KEY = os.getenv("API_KEY")  
+API_KEY = os.getenv("API_KEY") 
 # SQL Queries to execute - Each tuple is (heading, query)
 SQL_QUERIES = [
     ("Contact-Me Form leads", """
@@ -82,6 +88,112 @@ RECIPIENTS = [
     'sales_ops@early.fit', 
     'parth@early.fit',
 ]
+
+# Error notification recipient
+ERROR_NOTIFICATION_EMAIL = 'kartik@early.fit'
+
+# === [MODIFIED] Google Sheets Configuration ===
+GOOGLE_SHEETS_CONFIG = {
+    # This file MUST be in the same directory as your script
+    'SERVICE_ACCOUNT_FILE': 'landingpageconnections-e3325175d396.json',
+    'SCOPES': ['https://www.googleapis.com/auth/spreadsheets'],
+    
+    # Get this from your .env file
+    'SPREADSHEET_ID': os.getenv("SPREADSHEET_ID"),
+    
+    # Set the names of the tabs (sheets) you want to write to.
+    'SHEET_NAMES': ['Website leads', 'New Sign ups MDT'],
+}
+# =========================================
+
+
+# ============================================================================
+# GOOGLE SHEETS UTILITIES (MODIFIED)
+# ============================================================================
+
+def get_google_sheets_service():
+    """Authenticates and returns a Google Sheets service object."""
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            GOOGLE_SHEETS_CONFIG['SERVICE_ACCOUNT_FILE'], 
+            scopes=GOOGLE_SHEETS_CONFIG['SCOPES']
+        )
+        service = build('sheets', 'v4', credentials=creds)
+        print("    [OK] Google Sheets service authenticated")
+        return service
+    except Exception as e:
+        print(f"    [ERROR] Failed to authenticate with Google Sheets: {e}")
+        return None
+
+def append_to_google_sheet(service, spreadsheet_id: str, sheet_name: str, data: List[Dict[Any, Any]]):
+    """
+    (SMART APPEND) Appends data to a sheet.
+    Checks if headers are needed and adds them if the sheet is empty.
+    """
+    
+    if not data:
+        print(f"           No data to append for sheet '{sheet_name}'.")
+        return True # Not an error, just nothing to do
+
+    values_to_append = []
+    
+    try:
+        # 1. Check if the sheet is empty by checking A1
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A1"
+        ).execute()
+        
+        sheet_is_empty = not result.get('values')
+        print(f"           Sheet '{sheet_name}' is empty: {sheet_is_empty}")
+
+        # 2. Get headers from the first data row
+        headers = list(data[0].keys())
+
+        # 3. If the sheet is empty, add headers to our list
+        if sheet_is_empty:
+            values_to_append.append(headers)
+        
+        # 4. Add all the data rows
+        for row in data:
+            row_values = []
+            for col in headers:
+                value = row.get(col)
+                
+                if value is None:
+                    row_values.append("")
+                elif isinstance(value, (dict, list)):
+                    row_values.append(json.dumps(value))
+                else:
+                    row_values.append(str(value)) # Convert all values to string
+            values_to_append.append(row_values)
+
+        # 5. Perform the append operation
+        body = {'values': values_to_append}
+        
+        service.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A1", # Appends after the last row
+            valueInputOption='USER_ENTERED',
+            insertDataOption='INSERT_ROWS',
+            body=body
+        ).execute()
+        
+        if sheet_is_empty:
+             print(f"    [OK] Wrote headers and {len(data)} records to sheet '{sheet_name}'")
+        else:
+             print(f"    [OK] Appended {len(data)} records to sheet '{sheet_name}'")
+        return True
+
+    except HttpError as e:
+        print(f"    [ERROR] HTTP error appending to sheet '{sheet_name}': {e}")
+        if "UNABLE_TO_PARSE" in str(e):
+             print("           This error often means the sheet name is incorrect or does not exist.")
+        return False
+    except Exception as e:
+        print(f"    [ERROR] General error appending to sheet '{sheet_name}': {e}")
+        return False
+
 
 # ============================================================================
 # EMAIL UTILITIES
@@ -152,7 +264,7 @@ def format_data_as_table(data: List[Dict[Any, Any]], title: str = None) -> str:
 
 
 def generate_email_body(tables: List[tuple], title: str = "Sales Report", 
-                       greeting: str = None, closing: str = None) -> str:
+                        greeting: str = None, closing: str = None) -> str:
     """Generate a complete email body with formatted data in tables"""
     html_parts = []
     
@@ -210,6 +322,91 @@ def generate_email_body(tables: List[tuple], title: str = "Sales Report",
     ''')
     
     return '\n'.join(html_parts)
+
+
+def generate_error_email_body(error_details: str) -> str:
+    """Generate error notification email body"""
+    html_parts = []
+    
+    html_parts.append('''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+        <div style="max-width: 800px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+    ''')
+    
+    html_parts.append('''
+            <div style="border-bottom: 2px solid #f44336; padding-bottom: 15px; margin-bottom: 20px;">
+                <h1 style="color: #f44336; font-size: 24px; margin: 0; font-weight: bold;">
+                    ⚠️ EarlyFit Sales Report - Script Failure
+                </h1>
+            </div>
+    ''')
+    
+    html_parts.append('''
+            <p style="color: #333; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+                Dear Kartik,<br><br>
+                The EarlyFit Sales Report script has encountered an error and failed to complete successfully.
+            </p>
+    ''')
+    
+    html_parts.append(f'''
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+                <h3 style="color: #856404; margin: 0 0 10px 0;">Error Details:</h3>
+                <pre style="color: #856404; font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word; margin: 0;">{error_details}</pre>
+            </div>
+    ''')
+    
+    html_parts.append('''
+            <p style="color: #333; font-size: 14px; line-height: 1.6; margin-top: 20px;">
+                Please investigate and resolve the issue as soon as possible.
+            </p>
+    ''')
+    
+    html_parts.append(f'''
+            <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; color: #666; font-size: 11px;">
+                <p style="margin: 0;">
+                    This is an automated error notification from EarlyFit Sales System.<br>
+                    Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    ''')
+    
+    return '\n'.join(html_parts)
+
+
+def send_error_notification(error_message: str):
+    """Send error notification email to kartik@early.fit"""
+    try:
+        print(f"\n[ERROR NOTIFICATION] Sending error notification to {ERROR_NOTIFICATION_EMAIL}...")
+        
+        server = smtplib.SMTP(EMAIL_CONFIG['smtp_host'], EMAIL_CONFIG['smtp_port'])
+        server.starttls()
+        server.login(EMAIL_CONFIG['smtp_username'], EMAIL_CONFIG['smtp_password'])
+        
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f'⚠️ EarlyFit Sales Report Failed - {datetime.now().strftime("%Y-%m-%d")}'
+        msg['From'] = f"{EMAIL_CONFIG['from_name']} <{EMAIL_CONFIG['from_email']}>"
+        msg['To'] = ERROR_NOTIFICATION_EMAIL
+        
+        html_body = generate_error_email_body(error_message)
+        html_part = MIMEText(html_body, 'html')
+        msg.attach(html_part)
+        
+        server.send_message(msg)
+        server.quit()
+        
+        print(f"    [OK] Error notification sent to {ERROR_NOTIFICATION_EMAIL}")
+        
+    except Exception as e:
+        print(f"    [ERROR] Failed to send error notification: {e}")
 
 
 def print_data_preview(data: List[Dict[Any, Any]]):
@@ -275,31 +472,36 @@ class EarlyFitAPIClient:
 
 
 # ============================================================================
-# MAIN EMAIL FUNCTION
+# MAIN REPORT FUNCTION (FIXED)
 # ============================================================================
 
 def send_report_email():
-    """Main function to query database and send email report"""
+    """Main function to query database, update Google Sheets, and send email report"""
     print("="*60)
-    print("EarlyFit Sales Report Email")
+    print("EarlyFit Sales Report")
     print("="*60)
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
+    error_log = []  # Collect all errors for notification
+    
     # Step 1: Initialize API client
-    print("[1/4] Initializing API client...")
+    print("[1/5] Initializing API client...")
     try:
         client = EarlyFitAPIClient(base_url=BASE_URL, api_key=API_KEY)
         print("    [OK] API client initialized")
     except Exception as e:
-        print(f"    [ERROR] Failed to initialize API client: {e}")
+        error_msg = f"Failed to initialize API client: {e}"
+        print(f"    [ERROR] {error_msg}")
+        error_log.append(error_msg)
+        send_error_notification("\n".join(error_log))
         return False
     
     # Step 2: Query database and get email HTML for all queries
-    print(f"\n[2/4] Querying database...")
+    print(f"\n[2/5] Querying database...")
     print(f"    Executing {len(SQL_QUERIES)} queries...")
     
     tables_data = []
-    all_successful = True
+    all_queries_successful = True
     
     for idx, (heading, query) in enumerate(SQL_QUERIES):
         try:
@@ -317,18 +519,82 @@ def send_report_email():
                     print(f"        [WARNING] No data returned for {heading}")
                     tables_data.append((heading, []))
             else:
-                print(f"        [ERROR] Query failed for {heading}")
-                all_successful = False
+                error_msg = f"Query failed for {heading}: {result}"
+                print(f"        [ERROR] {error_msg}")
+                error_log.append(error_msg)
+                all_queries_successful = False
                 
         except Exception as e:
-            print(f"        [ERROR] Query failed: {e}")
-            all_successful = False
+            error_msg = f"Query exception for {heading}: {e}"
+            print(f"        [ERROR] {error_msg}")
+            error_log.append(error_msg)
+            all_queries_successful = False
     
-    if not tables_data:
-        print("    [ERROR] No data returned from any query")
+    # Check if queries were successful
+    if not all_queries_successful:
+        error_msg = "One or more database queries failed"
+        print(f"\n    [ERROR] {error_msg}")
+        error_log.append(error_msg)
+        send_error_notification("\n".join(error_log))
         return False
     
-    # Generate combined email HTML
+    if not tables_data:
+        error_msg = "No data returned from any query"
+        print(f"    [ERROR] {error_msg}")
+        error_log.append(error_msg)
+        send_error_notification("\n".join(error_log))
+        return False
+    
+    # === [FIXED] Step 3: Write data to Google Sheets ===
+    print(f"\n[3/5] Writing to Google Sheets...")
+    sheets_success = True
+    sheets_errors = []
+    
+    try:
+        sheets_service = get_google_sheets_service()
+        if sheets_service and GOOGLE_SHEETS_CONFIG['SPREADSHEET_ID'] != "YOUR_SPREADSHEET_ID_HERE":
+            for i, (heading, data) in enumerate(tables_data):
+                if i < len(GOOGLE_SHEETS_CONFIG['SHEET_NAMES']):
+                    sheet_name = GOOGLE_SHEETS_CONFIG['SHEET_NAMES'][i]
+                    print(f"    Appending '{heading}' to sheet '{sheet_name}'...")
+                    
+                    if not append_to_google_sheet(sheets_service, GOOGLE_SHEETS_CONFIG['SPREADSHEET_ID'], sheet_name, data):
+                        sheets_success = False
+                        error_msg = f"Failed to append data to sheet '{sheet_name}'"
+                        sheets_errors.append(error_msg)
+                        error_log.append(error_msg)
+                else:
+                    error_msg = f"No sheet name defined in config for query {i+1}"
+                    print(f"    [WARNING] {error_msg}")
+                    sheets_errors.append(error_msg)
+                    error_log.append(error_msg)
+                    sheets_success = False
+        elif not sheets_service:
+            error_msg = "Could not authenticate with Google Sheets"
+            print(f"    [ERROR] {error_msg}")
+            sheets_errors.append(error_msg)
+            error_log.append(error_msg)
+            sheets_success = False
+        else:
+            error_msg = "SPREADSHEET_ID is not set in .env file"
+            print(f"    [ERROR] {error_msg}")
+            sheets_errors.append(error_msg)
+            error_log.append(error_msg)
+            sheets_success = False
+            
+    except Exception as e:
+        error_msg = f"Failed to write to Google Sheets: {e}"
+        print(f"    [ERROR] {error_msg}")
+        sheets_errors.append(error_msg)
+        error_log.append(error_msg)
+        sheets_success = False
+    
+    # Note: We continue even if sheets fail, but will notify kartik
+    # We only stop if queries themselves failed (checked earlier)
+    # =================================================
+    
+    # Step 4: Generate Email HTML
+    print(f"\n[4/5] Generating email HTML...")
     try:
         email_html = generate_email_body(
             tables=tables_data,
@@ -336,30 +602,17 @@ def send_report_email():
             greeting=EMAIL_CONFIG['greeting'],
             closing=EMAIL_CONFIG['closing']
         )
-        print(f"\n    [OK] HTML email generated with {len(tables_data)} section(s)")
+        print("    [OK] HTML email generated")
         
     except Exception as e:
-        print(f"    [ERROR] Failed to generate email HTML: {e}")
+        error_msg = f"Failed to generate email HTML: {e}"
+        print(f"    [ERROR] {error_msg}")
+        error_log.append(error_msg)
+        send_error_notification("\n".join(error_log))
         return False
     
-    # Step 3: Prepare email
-    print(f"\n[3/4] Preparing email...")
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = EMAIL_CONFIG['subject']
-        msg['From'] = f"{EMAIL_CONFIG['from_name']} <{EMAIL_CONFIG['from_email']}>"
-        
-        html_part = MIMEText(email_html, 'html')
-        msg.attach(html_part)
-        
-        print(f"    [OK] Email prepared for {len(RECIPIENTS)} recipient(s)")
-        
-    except Exception as e:
-        print(f"    [ERROR] Failed to prepare email: {e}")
-        return False
-    
-    # Step 4: Send email
-    print(f"\n[4/4] Sending email...")
+    # Step 5: Prepare and Send email
+    print(f"\n[5/5] Sending email...")
     try:
         print(f"    Connecting to {EMAIL_CONFIG['smtp_host']}...")
         server = smtplib.SMTP(EMAIL_CONFIG['smtp_host'], EMAIL_CONFIG['smtp_port'])
@@ -382,24 +635,44 @@ def send_report_email():
                 server.send_message(recipient_msg)
                 print(f"    [OK] Sent to: {recipient}")
             except Exception as e:
-                print(f"    [ERROR] Failed to send to {recipient}: {e}")
+                error_msg = f"Failed to send to {recipient}: {e}"
+                print(f"    [ERROR] {error_msg}")
                 failed_recipients.append(recipient)
+                error_log.append(error_msg)
         
         server.quit()
         
+        # Determine overall success
+        email_success = len(failed_recipients) == 0
+        overall_success = email_success and sheets_success
+        
         if failed_recipients:
-            print(f"\n[WARNING] Failed to send to {len(failed_recipients)} recipient(s)")
+            error_msg = f"Failed to send to {len(failed_recipients)} recipient(s): {', '.join(failed_recipients)}"
+            print(f"\n[WARNING] {error_msg}")
+            error_log.append(error_msg)
+            send_error_notification("\n".join(error_log))
             return False
+        elif not sheets_success:
+            # Emails sent successfully but sheets failed
+            print(f"\n[PARTIAL SUCCESS] Email sent to all {len(RECIPIENTS)} recipient(s), but Google Sheets update failed!")
+            send_error_notification("\n".join(error_log))
+            return True  # Return True because emails were sent
         else:
+            # Everything succeeded
             print(f"\n[SUCCESS] Email sent successfully to all {len(RECIPIENTS)} recipient(s)!")
             return True
             
     except smtplib.SMTPAuthenticationError:
-        print(f"    [ERROR] Authentication failed. Check your email and password.")
-        print(f"      For Gmail, use an App Password instead of your regular password.")
+        error_msg = "SMTP Authentication failed. Check your email and password. For Gmail, use an App Password."
+        print(f"    [ERROR] {error_msg}")
+        error_log.append(error_msg)
+        send_error_notification("\n".join(error_log))
         return False
     except Exception as e:
-        print(f"    [ERROR] Failed to send email: {e}")
+        error_msg = f"Failed to send email: {e}"
+        print(f"    [ERROR] {error_msg}")
+        error_log.append(error_msg)
+        send_error_notification("\n".join(error_log))
         return False
 
 
@@ -431,12 +704,20 @@ def validate_config():
     # Validate Recipients
     if not RECIPIENTS or len(RECIPIENTS) == 0:
         errors.append("  - Add recipient email addresses to RECIPIENTS list")
-    elif RECIPIENTS[0] == 'recipient1@example.com':
-        errors.append("  - Update RECIPIENTS list with actual email addresses")
     
     # Validate SQL Queries
     if not SQL_QUERIES or len(SQL_QUERIES) == 0:
         errors.append("  - Add SQL queries to SQL_QUERIES list")
+        
+    # Validate Google Sheets Config
+    if not GOOGLE_SHEETS_CONFIG['SPREADSHEET_ID'] or GOOGLE_SHEETS_CONFIG['SPREADSHEET_ID'] == "YOUR_SPREADSHEET_ID_HERE":
+        errors.append("  - SPREADSHEET_ID is not set in .env file")
+    
+    if not os.path.exists(GOOGLE_SHEETS_CONFIG['SERVICE_ACCOUNT_FILE']):
+        errors.append(f"  - Service account file '{GOOGLE_SHEETS_CONFIG['SERVICE_ACCOUNT_FILE']}' not found.")
+        
+    if len(GOOGLE_SHEETS_CONFIG['SHEET_NAMES']) < len(SQL_QUERIES):
+        errors.append("  - Not enough sheet names in GOOGLE_SHEETS_CONFIG for the number of SQL_QUERIES.")
     
     return errors
 
@@ -454,11 +735,15 @@ def main():
         print("="*60)
         print("CONFIGURATION REQUIRED")
         print("="*60)
-        print("Please update the following settings in .env file:\n")
+        print("Please fix the following configuration issues:\n")
         for error in config_errors:
             print(error)
         print("\nOnce configured, run the script again.")
-        return
+        
+        # Send error notification for configuration issues
+        error_message = "Configuration validation failed:\n" + "\n".join(config_errors)
+        send_error_notification(error_message)
+        return False
     
     success = send_report_email()
     
@@ -479,10 +764,13 @@ if __name__ == "__main__":
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         print("\n\n[INFO] Script interrupted by user")
+        error_message = "Script was interrupted by user (KeyboardInterrupt)"
+        send_error_notification(error_message)
         sys.exit(1)
     except Exception as e:
-        print(f"\n[ERROR] Unexpected error: {e}")
+        error_message = f"Unexpected error: {e}\n\nTraceback:\n"
         import traceback
-        traceback.print_exc()
+        error_message += traceback.format_exc()
+        print(f"\n[ERROR] {error_message}")
+        send_error_notification(error_message)
         sys.exit(1)
-
