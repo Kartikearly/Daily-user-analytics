@@ -1,6 +1,10 @@
 # Environment variables
 .env
 
+# Google Service Account files (should be created from secrets in CI/CD)
+*service*.json
+landingpageconnections-*.json
+
 # Python
 __pycache__/
 *.py[cod]
