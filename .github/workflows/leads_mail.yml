@@ -23,6 +23,12 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
+      - name: Create Google Service Account file
+        run: |
+          python -c "import os; open('landingpageconnections-e3325175d396.json', 'w').write(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'])"
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      
       - name: Run Leads Mail Report
         env:
           # This block securely passes your secrets to the script
@@ -33,5 +39,6 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: python leads_mail.py
 
