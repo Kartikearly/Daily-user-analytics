@@ -89,7 +89,7 @@ RECIPIENTS = [
     'parth@early.fit',
 ]
 
-# Error notification recipient
+# Error notification recipient hi
 ERROR_NOTIFICATION_EMAIL = 'kartik@early.fit'
 
 # === [MODIFIED] Google Sheets Configuration ===
