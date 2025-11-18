@@ -85,9 +85,9 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    # 'sales_ops@early.fit', 
-    # 'parth@early.fit',
-    'kabirgupta609@gmail.com'
+    'sales_ops@early.fit', 
+    'parth@early.fit',
+    
 ]
 
 # Error notification recipient hi
