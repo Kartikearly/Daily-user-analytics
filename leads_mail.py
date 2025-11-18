@@ -89,7 +89,7 @@ RECIPIENTS = [
     'parth@early.fit',
 ]
 
-# Error notification recipient
+# Error notification recipient hi
 ERROR_NOTIFICATION_EMAIL = 'kartik@early.fit'
 
 # === [MODIFIED] Google Sheets Configuration ===
@@ -554,7 +554,14 @@ def send_report_email():
         sheets_service = get_google_sheets_service()
         if sheets_service and GOOGLE_SHEETS_CONFIG['SPREADSHEET_ID'] != "YOUR_SPREADSHEET_ID_HERE":
             for i, (heading, data) in enumerate(tables_data):
-                if i < len(GOOGLE_SHEETS_CONFIG['SHEET_NAMES']):
+                # Skip Google Sheets update for "Contact-Me Form leads" (index 0)
+                # Only update for "New Signups(MDT/App)" (index 1)
+                if i == 0:
+                    print(f"    Skipping Google Sheets update for '{heading}' (Contact-Me Form leads)")
+                    continue
+                
+                # For index 1 (New Signups), use sheet name at index 1
+                if i == 1 and i < len(GOOGLE_SHEETS_CONFIG['SHEET_NAMES']):
                     sheet_name = GOOGLE_SHEETS_CONFIG['SHEET_NAMES'][i]
                     print(f"    Appending '{heading}' to sheet '{sheet_name}'...")
                     
@@ -563,7 +570,7 @@ def send_report_email():
                         error_msg = f"Failed to append data to sheet '{sheet_name}'"
                         sheets_errors.append(error_msg)
                         error_log.append(error_msg)
-                else:
+                elif i >= len(GOOGLE_SHEETS_CONFIG['SHEET_NAMES']):
                     error_msg = f"No sheet name defined in config for query {i+1}"
                     print(f"    [WARNING] {error_msg}")
                     sheets_errors.append(error_msg)
