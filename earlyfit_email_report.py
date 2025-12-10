@@ -68,9 +68,29 @@ WITH
                     END AS user_onboarded
                 FROM patient_base pb
             ),
+            -- UPDATED: Combined Interaction Logic (Notes + Appointments + Messages)
             last_consultant_interaction AS (
-                SELECT patient_id, (CURRENT_DATE - MAX(date)::date) AS days_since_last_interaction
-                FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL GROUP BY patient_id
+                SELECT patient_id, (CURRENT_DATE - MAX(interaction_date)) AS days_since_last_interaction
+                FROM (
+                    -- 1. Notes
+                    SELECT patient_id, date::date AS interaction_date 
+                    FROM "public"."patientnotes" 
+                    WHERE consultant_id IS NOT NULL
+                    
+                    UNION ALL
+                    
+                    -- 2. Completed Appointments
+                    SELECT patient_id, date::date AS interaction_date 
+                    FROM "public"."appointment" 
+                    WHERE status = 'COMPLETED'
+                    UNION ALL
+                    -- 3. Consultant Messages (New)
+                    SELECT c.patient_id, m."messagedAt"::date AS interaction_date
+                    FROM "public"."chats" c
+                    JOIN "public"."messages" m ON c.id = m.chat_id
+                    WHERE m.sender = c.consultant_id
+                ) all_interactions
+                GROUP BY patient_id
             ),
             meal_log_last_3_days AS (
                 SELECT patient_id, 'Yes' AS logged_in_last_3_days
@@ -134,9 +154,20 @@ WITH
                     END AS user_onboarded
                 FROM patient_base pb
             ),
+            -- UPDATED: Combined Interaction Logic
             last_consultant_interaction AS (
-                SELECT patient_id, (CURRENT_DATE - MAX(date)::date) AS days_since_last_interaction
-                FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL GROUP BY patient_id
+                SELECT patient_id, (CURRENT_DATE - MAX(interaction_date)) AS days_since_last_interaction
+                FROM (
+                    SELECT patient_id, date::date AS interaction_date FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL
+                    UNION ALL
+                    SELECT patient_id, date::date AS interaction_date FROM "public"."appointment" WHERE status = 'COMPLETED'
+                    UNION ALL
+                    SELECT c.patient_id, m."messagedAt"::date AS interaction_date
+                    FROM "public"."chats" c
+                    JOIN "public"."messages" m ON c.id = m.chat_id
+                    WHERE m.sender = c.consultant_id
+                ) all_interactions
+                GROUP BY patient_id
             ),
             meal_log_last_3_days AS (
                 SELECT patient_id, 'Yes' AS logged_in_last_3_days
@@ -199,9 +230,20 @@ WITH
                     END AS user_onboarded
                 FROM patient_base pb
             ),
+            -- UPDATED: Combined Interaction Logic
             last_consultant_interaction AS (
-                SELECT patient_id, ((CURRENT_DATE - INTERVAL '1 day')::date - MAX(date)::date) AS days_since_last_interaction
-                FROM "public"."patientnotes" WHERE date::date < CURRENT_DATE GROUP BY patient_id
+                SELECT patient_id, ((CURRENT_DATE - INTERVAL '1 day')::date - MAX(interaction_date)) AS days_since_last_interaction
+                FROM (
+                    SELECT patient_id, date::date AS interaction_date FROM "public"."patientnotes" WHERE date::date < CURRENT_DATE
+                    UNION ALL
+                    SELECT patient_id, date::date AS interaction_date FROM "public"."appointment" WHERE status = 'COMPLETED' AND date::date < CURRENT_DATE
+                    UNION ALL
+                    SELECT c.patient_id, m."messagedAt"::date AS interaction_date
+                    FROM "public"."chats" c
+                    JOIN "public"."messages" m ON c.id = m.chat_id
+                    WHERE m.sender = c.consultant_id AND m."messagedAt"::date < CURRENT_DATE
+                ) all_interactions
+                GROUP BY patient_id
             ),
             meal_log_last_3_days AS (
                 SELECT patient_id, 'Yes' AS logged_in_last_3_days
@@ -265,9 +307,20 @@ WITH
                     END AS user_onboarded
                 FROM patient_base pb
             ),
+            -- UPDATED: Combined Interaction Logic
             last_consultant_interaction AS (
-                SELECT patient_id, ((CURRENT_DATE - INTERVAL '1 day')::date - MAX(date)::date) AS days_since_last_interaction
-                FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL AND date::date < CURRENT_DATE GROUP BY patient_id
+                SELECT patient_id, ((CURRENT_DATE - INTERVAL '1 day')::date - MAX(interaction_date)) AS days_since_last_interaction
+                FROM (
+                    SELECT patient_id, date::date AS interaction_date FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL AND date::date < CURRENT_DATE
+                    UNION ALL
+                    SELECT patient_id, date::date AS interaction_date FROM "public"."appointment" WHERE status = 'COMPLETED' AND date::date < CURRENT_DATE
+                    UNION ALL
+                    SELECT c.patient_id, m."messagedAt"::date AS interaction_date
+                    FROM "public"."chats" c
+                    JOIN "public"."messages" m ON c.id = m.chat_id
+                    WHERE m.sender = c.consultant_id AND m."messagedAt"::date < CURRENT_DATE
+                ) all_interactions
+                GROUP BY patient_id
             ),
             meal_log_last_3_days AS (
                 SELECT patient_id, 'Yes' AS logged_in_last_3_days
@@ -416,7 +469,7 @@ WITH
             END AS user_onboarded
         FROM patient_base pb
     ),
-    -- CTE 3: last_consultant_interaction
+    -- CTE 3: last_consultant_interaction (Existing Note)
     last_consultant_interaction AS (
         SELECT patient_id, MAX(date) AS last_note_date
         FROM "public"."patientnotes"
@@ -430,14 +483,22 @@ WITH
         WHERE status = 'COMPLETED'
         GROUP BY patient_id
     ),
-    -- CTE 5: meal_log_last_3_days
+    -- CTE 5: last_consultant_message (NEW)
+    last_consultant_message AS (
+        SELECT c.patient_id, MAX(m."messagedAt") AS last_message_date
+        FROM "public"."chats" c
+        JOIN "public"."messages" m ON c.id = m.chat_id
+        WHERE m.sender = c.consultant_id
+        GROUP BY c.patient_id
+    ),
+    -- CTE 6: meal_log_last_3_days
     meal_log_last_3_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."patientfoodlogs"
         WHERE date::date >= CURRENT_DATE - INTERVAL '3 days'
         GROUP BY patient_id
     ),
-    -- CTE 6: latest_weight
+    -- CTE 7: latest_weight
     latest_weight AS (
         SELECT patient_id, ROUND(value::numeric, 2) AS current_weight
         FROM (
@@ -446,14 +507,14 @@ WITH
         ) sub
         WHERE rn = 1
     ),
-    -- CTE 7: weight_log_last_7_days
+    -- CTE 8: weight_log_last_7_days
     weight_log_last_7_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."metrics"
         WHERE name = 'BODY_WEIGHT' AND date::date >= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY patient_id
     ),
-    -- CTE 8: all_patient_interactions
+    -- CTE 9: all_patient_interactions
     all_patient_interactions AS (
         SELECT patient_id, date::date AS interaction_date FROM "public"."activity"
         UNION
@@ -461,7 +522,7 @@ WITH
         UNION
         SELECT patient_id, date::date AS interaction_date FROM "public"."metrics"
     ),
-    -- CTE 9: activity_summary
+    -- CTE 10: activity_summary
     activity_summary AS (
         SELECT
             patient_id,
@@ -479,11 +540,10 @@ SELECT
     TRIM(pb.firstname) AS "Patient Name",
     os.user_onboarded AS "User Onboarded",
     
-    -- REPLACED: "On/Off Track" with "OnTrack/OffTrack"
     ROUND(pb.goal_weight::numeric, 2) AS "OnTrack/OffTrack",
-
-    -- UPDATED COLUMN: Days Since Last Interaction
-    (CURRENT_DATE - GREATEST(lci.last_note_date::date, lca.last_appt_date)) AS "Days Since Last Interaction",
+    -- UPDATED COLUMN: Days Since Last Interaction (Includes Messages)
+    (CURRENT_DATE - GREATEST(lci.last_note_date::date, lca.last_appt_date, lcm.last_message_date::date)) AS "Days Since Last Interaction",
+    
     COALESCE(mll3d.logged, 'No') AS "Meal Log (3 days)",
     COALESCE(wll7d.logged, 'No') AS "Weight Log (7 days)",
     COALESCE(act.active_days_last_7, 0) AS "Num Active days (in last 7 days)",
@@ -494,6 +554,7 @@ FROM
 LEFT JOIN onboarding_status os ON pb.id = os.patient_id
 LEFT JOIN last_consultant_interaction lci ON pb.id = lci.patient_id
 LEFT JOIN last_completed_appointment lca ON pb.id = lca.patient_id
+LEFT JOIN last_consultant_message lcm ON pb.id = lcm.patient_id -- JOIN NEW CTE
 LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
 LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
 LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
@@ -548,14 +609,22 @@ WITH
         WHERE status = 'COMPLETED'
         GROUP BY patient_id
     ),
-    -- CTE 5: meal_log_last_3_days
+    -- CTE 5: last_consultant_message (NEW)
+    last_consultant_message AS (
+        SELECT c.patient_id, MAX(m."messagedAt") AS last_message_date
+        FROM "public"."chats" c
+        JOIN "public"."messages" m ON c.id = m.chat_id
+        WHERE m.sender = c.consultant_id
+        GROUP BY c.patient_id
+    ),
+    -- CTE 6: meal_log_last_3_days
     meal_log_last_3_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."patientfoodlogs"
         WHERE date::date >= CURRENT_DATE - INTERVAL '3 days'
         GROUP BY patient_id
     ),
-    -- CTE 6: latest_weight
+    -- CTE 7: latest_weight
     latest_weight AS (
         SELECT patient_id, ROUND(value::numeric, 2) AS current_weight
         FROM (
@@ -564,14 +633,14 @@ WITH
         ) sub
         WHERE rn = 1
     ),
-    -- CTE 7: weight_log_last_7_days
+    -- CTE 8: weight_log_last_7_days
     weight_log_last_7_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."metrics"
         WHERE name = 'BODY_WEIGHT' AND date::date >= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY patient_id
     ),
-    -- CTE 8: all_patient_interactions
+    -- CTE 9: all_patient_interactions
     all_patient_interactions AS (
         SELECT patient_id, date::date AS interaction_date FROM "public"."activity"
         UNION
@@ -579,7 +648,7 @@ WITH
         UNION
         SELECT patient_id, date::date AS interaction_date FROM "public"."metrics"
     ),
-    -- CTE 9: activity_summary
+    -- CTE 10: activity_summary
     activity_summary AS (
         SELECT
             patient_id,
@@ -597,11 +666,10 @@ SELECT
     TRIM(pb.firstname) AS "Patient Name",
     os.user_onboarded AS "User Onboarded",
     
-    -- REPLACED: "On/Off Track" with "OnTrack/OffTrack"
     ROUND(pb.goal_weight::numeric, 2) AS "OnTrack/OffTrack",
-
-    -- UPDATED COLUMN: Days Since Last Interaction
-    (CURRENT_DATE - GREATEST(lci.last_note_date::date, lca.last_appt_date)) AS "Days Since Last Interaction",
+    -- UPDATED COLUMN: Days Since Last Interaction (Includes Messages)
+    (CURRENT_DATE - GREATEST(lci.last_note_date::date, lca.last_appt_date, lcm.last_message_date::date)) AS "Days Since Last Interaction",
+    
     COALESCE(mll3d.logged, 'No') AS "Meal Log (3 days)",
     COALESCE(wll7d.logged, 'No') AS "Weight Log (7 days)",
     COALESCE(act.active_days_last_7, 0) AS "Num Active days (in last 7 days)",
@@ -612,6 +680,7 @@ FROM
 LEFT JOIN onboarding_status os ON pb.id = os.patient_id
 LEFT JOIN last_consultant_interaction lci ON pb.id = lci.patient_id
 LEFT JOIN last_completed_appointment lca ON pb.id = lca.patient_id
+LEFT JOIN last_consultant_message lcm ON pb.id = lcm.patient_id -- JOIN NEW CTE
 LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
 LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
 LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
@@ -689,23 +758,31 @@ WITH
         WHERE status = 'COMPLETED'
         GROUP BY patient_id
     ),
-    -- CTE 7: meal_log_last_3_days
+    -- CTE 7: last_consultant_message (NEW)
+    last_consultant_message AS (
+        SELECT c.patient_id, MAX(m."messagedAt") AS last_message_date
+        FROM "public"."chats" c
+        JOIN "public"."messages" m ON c.id = m.chat_id
+        WHERE m.sender = c.consultant_id
+        GROUP BY c.patient_id
+    ),
+    -- CTE 8: meal_log_last_3_days
     meal_log_last_3_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."patientfoodlogs" WHERE date::date >= CURRENT_DATE - INTERVAL '3 days' GROUP BY patient_id
     ),
-    -- CTE 8: latest_weight
+    -- CTE 9: latest_weight
     latest_weight AS (
         SELECT patient_id, ROUND(value::numeric, 2) AS current_weight
         FROM (SELECT patient_id, value, ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY date DESC, "createdAt" DESC) AS rn FROM "public"."metrics" WHERE name = 'BODY_WEIGHT') sub
         WHERE rn = 1
     ),
-    -- CTE 9: weight_log_last_7_days
+    -- CTE 10: weight_log_last_7_days
     weight_log_last_7_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."metrics" WHERE name = 'BODY_WEIGHT' AND date::date >= CURRENT_DATE - INTERVAL '7 days' GROUP BY patient_id
     ),
-    -- CTE 10: all_patient_interactions
+    -- CTE 11: all_patient_interactions
     all_patient_interactions AS (
         SELECT patient_id, date::date AS interaction_date FROM "public"."activity"
         UNION
@@ -713,19 +790,19 @@ WITH
         UNION
         SELECT patient_id, date::date AS interaction_date FROM "public"."metrics"
     ),
-    -- CTE 11: activity_summary
+    -- CTE 12: activity_summary
     activity_summary AS (
         SELECT
             patient_id, MAX(interaction_date) AS last_active_day,
             COUNT(DISTINCT CASE WHEN interaction_date >= CURRENT_DATE - INTERVAL '7 days' THEN interaction_date ELSE NULL END) AS active_days_last_7
         FROM all_patient_interactions GROUP BY patient_id
     ),
-    -- CTE 12: last_meal_log_date
+    -- CTE 13: last_meal_log_date
     last_meal_log_date AS (
         SELECT patient_id, MAX(date::date) AS last_meal_log_date
         FROM "public"."patientfoodlogs" GROUP BY patient_id
     ),
-    -- CTE 13: last_weight_log_date
+    -- CTE 14: last_weight_log_date
     last_weight_log_date AS (
         SELECT patient_id, MAX(date::date) AS last_weight_log_date
         FROM "public"."metrics" WHERE name = 'BODY_WEIGHT' GROUP BY patient_id
@@ -757,7 +834,8 @@ SELECT
     -- Consultant Interaction Metrics
     lcn.last_note_date AS "Last Note Added Date",
     lcn.last_note_description AS "Last Note",
-    (CURRENT_DATE - GREATEST(lcn.last_note_date::date, lca.last_appt_date)) AS "Days Since Last Interaction",
+    -- UPDATED COLUMN: Days Since Last Interaction (Includes Messages)
+    (CURRENT_DATE - GREATEST(lcn.last_note_date::date, lca.last_appt_date, lcm.last_message_date::date)) AS "Days Since Last Interaction",
 
     lml.last_meal_log_date AS "Last Meal Log Date",
     lwl.last_weight_log_date AS "Last Weight Log Date",
@@ -770,6 +848,7 @@ FROM patient_base pb
 LEFT JOIN onboarding_metrics om ON pb.id = om.patient_id
 LEFT JOIN last_consultant_note_details lcn ON pb.id = lcn.patient_id
 LEFT JOIN last_completed_appointment lca ON pb.id = lca.patient_id
+LEFT JOIN last_consultant_message lcm ON pb.id = lcm.patient_id -- JOIN NEW CTE
 LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
 LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
 LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
