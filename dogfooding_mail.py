@@ -186,9 +186,12 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'team@early.fit',
+    'kartik@early.fit',
     
 ]
+
+# Email sending toggle
+ENABLE_EMAIL_SENDING = os.getenv("ENABLE_EMAIL_SENDING", "true").strip().lower() == "true"
 
 # ============================================================================
 # TABLE UTILITIES
@@ -515,6 +518,11 @@ def send_report_email():
     except Exception as e:
         print(f"    [ERROR] Failed to generate email HTML: {e}")
         return False
+    
+    if not ENABLE_EMAIL_SENDING:
+        print("\n[INFO] Email sending is currently disabled (ENABLE_EMAIL_SENDING=false).")
+        print("       Skipping SMTP preparation and send steps.")
+        return True
     
     # Step 3: Prepare email
     print(f"\n[3/4] Preparing email...")
