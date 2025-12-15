@@ -400,11 +400,11 @@ WITH
         UNION ALL
         SELECT
             5 AS sort_order,
-            'Num users with no interaction in last 5 days' AS "Metric",
-            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM coach_app_report_today),
-            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM coach_app_report_yesterday),
-            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM glp_report_today),
-            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 5) FROM glp_report_yesterday)
+            'Num users with no interaction in last 2 days' AS "Metric",
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 2 OR days_since_last_interaction IS NULL) FROM coach_app_report_today),
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 2 OR days_since_last_interaction IS NULL) FROM coach_app_report_yesterday),
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 2 OR days_since_last_interaction IS NULL) FROM glp_report_today),
+            (SELECT COUNT(*) FILTER (WHERE days_since_last_interaction > 2 OR days_since_last_interaction IS NULL) FROM glp_report_yesterday)
         UNION ALL
         SELECT
             6 AS sort_order,
@@ -1086,6 +1086,65 @@ def annotate_tables_with_sheet_data(
             )
 
 
+def update_summary_with_detailed_track_counts(tables_data: List[tuple]) -> None:
+    """
+    Update Query 1 (Summary Comparison) with On/Off Track counts from Query 2 and Query 3.
+    Treats "Data Incomplete" as "Off Track".
+    """
+    # Find Query 1 (Summary Comparison) and Query 2/3 data
+    summary_data = None
+    coach_app_data = None
+    glp_data = None
+    
+    for heading, data in tables_data:
+        if heading == "Summary Comparison":
+            summary_data = data
+        elif heading == "Coach +App User analytics":
+            coach_app_data = data
+        elif heading == "GLP User analytics":
+            glp_data = data
+    
+    if not summary_data or not coach_app_data or not glp_data:
+        print("    [WARNING] Could not find all required queries for track count update")
+        return
+    
+    # Count On Track and Off Track (treating Data Incomplete as Off Track) for Coach+App
+    coach_on_track = 0
+    coach_off_track = 0
+    for row in coach_app_data:
+        status = str(row.get("OnTrack/OffTrack", "")).strip()
+        if status == "On Track":
+            coach_on_track += 1
+        else:  # "Off Track", "Data Incomplete", or any other value
+            coach_off_track += 1
+    
+    # Count On Track and Off Track (treating Data Incomplete as Off Track) for GLP
+    glp_on_track = 0
+    glp_off_track = 0
+    for row in glp_data:
+        status = str(row.get("OnTrack/OffTrack", "")).strip()
+        if status == "On Track":
+            glp_on_track += 1
+        else:  # "Off Track", "Data Incomplete", or any other value
+            glp_off_track += 1
+    
+    # Update Query 1 summary table
+    # Find rows with "Num On Track Users" and "Num Off Track Users"
+    for row in summary_data:
+        metric = row.get("Metric", "")
+        if metric == "Num On Track Users":
+            # Update with counts only (no yesterday comparison)
+            row["Coach + App (vs Yesterday)"] = str(coach_on_track)
+            row["GLP (vs Yesterday)"] = str(glp_on_track)
+                
+        elif metric == "Num Off Track Users":
+            # Update with counts only (no yesterday comparison)
+            row["Coach + App (vs Yesterday)"] = str(coach_off_track)
+            row["GLP (vs Yesterday)"] = str(glp_off_track)
+    
+    print(f"    [OK] Updated Summary Comparison with track counts: Coach+App (On: {coach_on_track}, Off: {coach_off_track}), GLP (On: {glp_on_track}, Off: {glp_off_track})")
+
+
 def compute_progress_status(
     sheet_entry: Optional[Dict[str, Any]],
     analytics_entry: Optional[Dict[str, Any]]
@@ -1547,6 +1606,9 @@ def send_report_email():
 
     analytics_lookup = build_full_analytics_lookup(tables_data)
     annotate_tables_with_sheet_data(tables_data, sheet_lookup, analytics_lookup)
+    
+    # Update Query 1 (Summary Comparison) with On/Off Track counts from Query 2 and Query 3
+    update_summary_with_detailed_track_counts(tables_data)
     
     # Generate "Actions Required" table from "Full Analytics" data
     actions_map = {
