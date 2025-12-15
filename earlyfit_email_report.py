@@ -1223,7 +1223,7 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'kartik@early.fit', 
+    'patient_ops@early.fit', 
     
 ]
 
