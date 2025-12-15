@@ -447,18 +447,26 @@ ORDER BY
     
     ("Coach +App User analytics", """
 WITH
-    -- CTE 1: patient_base
     patient_base AS (
         SELECT
-            p.id, p.firstname, p.start_weight, p.goal_weight, p.target_duration, p.subscription_start_date
+            p.id, 
+            p.firstname, 
+            p.start_weight, 
+            p.goal_weight, 
+            p.target_duration, 
+            p.subscription_start_date,
+            s.name AS subscription_name,
+            -- Added Consultant Details
+            p.nutritionist_id AS consultant_id,
+            c.name AS consultant_name
         FROM "public"."patients" AS p
         JOIN "public"."subscriptions" AS s ON p.active_subscription_id = s.id
+        LEFT JOIN "public"."consultants" AS c ON p.nutritionist_id = c.id
         WHERE
             p."isActive" = true
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND p.subscription_end_date >= CURRENT_DATE
             AND s.type = 'Coach+App'
-            -- Removed 7-day filter logic if any existed
             AND LOWER(TRIM(p.firstname)) NOT IN (
                 'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
                 'parushi', 'bhaumik', 'archana', 'mrinal'
@@ -466,7 +474,6 @@ WITH
             AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
             AND p.nutritionist_id IN (8, 22, 24)
     ),
-    -- CTE 2: onboarding_status
     onboarding_status AS (
         SELECT
             pb.id AS patient_id,
@@ -478,36 +485,34 @@ WITH
             END AS user_onboarded
         FROM patient_base pb
     ),
-    -- CTE 3: last_consultant_interaction (Existing Note)
     last_consultant_interaction AS (
-        SELECT patient_id, MAX(date) AS last_note_date
-        FROM "public"."patientnotes"
-        WHERE consultant_id IS NOT NULL
+        SELECT patient_id, MAX(interaction_date) AS last_date
+        FROM (
+            SELECT patient_id, date::date AS interaction_date FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL
+            UNION ALL
+            SELECT patient_id, date::date AS interaction_date FROM "public"."appointment" WHERE status = 'COMPLETED'
+            UNION ALL
+            SELECT c.patient_id, m."messagedAt"::date AS interaction_date 
+            FROM "public"."chats" c
+            JOIN "public"."messages" m ON c.id = m.chat_id
+            WHERE m.sender = c.consultant_id
+        ) all_interactions
         GROUP BY patient_id
     ),
-    -- CTE 4: last_completed_appointment
-    last_completed_appointment AS (
-        SELECT patient_id, MAX(date::date) AS last_appt_date
-        FROM "public"."appointment"
-        WHERE status = 'COMPLETED'
+    severe_side_effects AS (
+        SELECT patient_id, STRING_AGG(type, ', ') AS side_effects
+        FROM "public"."patientsideeffects"
+        WHERE creator = 'PATIENT' 
+          AND date >= (CURRENT_DATE - INTERVAL '7 days')
+          AND LOWER(type) NOT IN ('good', 'okay', 'great')
         GROUP BY patient_id
     ),
-    -- CTE 5: last_consultant_message (NEW)
-    last_consultant_message AS (
-        SELECT c.patient_id, MAX(m."messagedAt") AS last_message_date
-        FROM "public"."chats" c
-        JOIN "public"."messages" m ON c.id = m.chat_id
-        WHERE m.sender = c.consultant_id
-        GROUP BY c.patient_id
-    ),
-    -- CTE 6: meal_log_last_3_days
     meal_log_last_3_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."patientfoodlogs"
         WHERE date::date >= CURRENT_DATE - INTERVAL '3 days'
         GROUP BY patient_id
     ),
-    -- CTE 7: latest_weight
     latest_weight AS (
         SELECT patient_id, ROUND(value::numeric, 2) AS current_weight
         FROM (
@@ -516,14 +521,12 @@ WITH
         ) sub
         WHERE rn = 1
     ),
-    -- CTE 8: weight_log_last_7_days
     weight_log_last_7_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."metrics"
         WHERE name = 'BODY_WEIGHT' AND date::date >= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY patient_id
     ),
-    -- CTE 9: all_patient_interactions
     all_patient_interactions AS (
         SELECT patient_id, date::date AS interaction_date FROM "public"."activity"
         UNION
@@ -531,7 +534,6 @@ WITH
         UNION
         SELECT patient_id, date::date AS interaction_date FROM "public"."metrics"
     ),
-    -- CTE 10: activity_summary
     activity_summary AS (
         SELECT
             patient_id,
@@ -544,26 +546,24 @@ WITH
         GROUP BY patient_id
     )
 
--- FINAL SELECT
 SELECT
     TRIM(pb.firstname) AS "Patient Name",
+    pb.consultant_id AS "Consultant ID",
+    pb.consultant_name AS "Consultant Name",
+    pb.subscription_name AS "Subscription Name",
     os.user_onboarded AS "User Onboarded",
-    
     ROUND(pb.goal_weight::numeric, 2) AS "OnTrack/OffTrack",
-    -- UPDATED COLUMN: Days Since Last Interaction (Includes Messages)
-    (CURRENT_DATE - GREATEST(lci.last_note_date::date, lca.last_appt_date, lcm.last_message_date::date)) AS "Days Since Last Interaction",
-    
+    (CURRENT_DATE - lci.last_date) AS "Days Since Last Interaction",
+    COALESCE(sse.side_effects, 'None') AS "Recent Severe Side Effects",
     COALESCE(mll3d.logged, 'No') AS "Meal Log (3 days)",
     COALESCE(wll7d.logged, 'No') AS "Weight Log (7 days)",
     COALESCE(act.active_days_last_7, 0) AS "Num Active days (in last 7 days)",
     act.last_active_day AS "Last Active Day"
-
 FROM
     patient_base pb
 LEFT JOIN onboarding_status os ON pb.id = os.patient_id
 LEFT JOIN last_consultant_interaction lci ON pb.id = lci.patient_id
-LEFT JOIN last_completed_appointment lca ON pb.id = lca.patient_id
-LEFT JOIN last_consultant_message lcm ON pb.id = lcm.patient_id -- JOIN NEW CTE
+LEFT JOIN severe_side_effects sse ON pb.id = sse.patient_id
 LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
 LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
 LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
@@ -571,19 +571,27 @@ LEFT JOIN activity_summary act ON pb.id = act.patient_id;"""),
     
     ("GLP User analytics", """
 WITH
-    -- CTE 1: patient_base
     patient_base AS (
         SELECT
-            p.id, p.firstname, p.start_weight, p.goal_weight, p.target_duration, p.subscription_start_date
+            p.id, 
+            p.firstname, 
+            p.start_weight, 
+            p.goal_weight, 
+            p.target_duration, 
+            p.subscription_start_date,
+            s.name AS subscription_name,
+            -- Added Consultant Details
+            p.nutritionist_id AS consultant_id,
+            c.name AS consultant_name
         FROM "public"."patients" AS p
         JOIN "public"."subscriptions" AS s ON p.active_subscription_id = s.id
+        LEFT JOIN "public"."consultants" AS c ON p.nutritionist_id = c.id
         WHERE
             p."isActive" = true
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND p.subscription_end_date >= CURRENT_DATE
             AND s.type = 'GLP'
             AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
-            -- Removed 7-day filter logic if any existed
             AND LOWER(TRIM(p.firstname)) NOT IN (
                 'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
                 'parushi', 'bhaumik', 'archana', 'mrinal'
@@ -591,7 +599,6 @@ WITH
             AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
             AND p.nutritionist_id IN (8, 22, 24)
     ),
-    -- CTE 2: onboarding_status
     onboarding_status AS (
         SELECT
             pb.id AS patient_id,
@@ -603,36 +610,34 @@ WITH
             END AS user_onboarded
         FROM patient_base pb
     ),
-    -- CTE 3: last_consultant_interaction
     last_consultant_interaction AS (
-        SELECT patient_id, MAX(date) AS last_note_date
-        FROM "public"."patientnotes"
-        WHERE consultant_id IS NOT NULL
+        SELECT patient_id, MAX(interaction_date) AS last_date
+        FROM (
+            SELECT patient_id, date::date AS interaction_date FROM "public"."patientnotes" WHERE consultant_id IS NOT NULL
+            UNION ALL
+            SELECT patient_id, date::date AS interaction_date FROM "public"."appointment" WHERE status = 'COMPLETED'
+            UNION ALL
+            SELECT c.patient_id, m."messagedAt"::date AS interaction_date 
+            FROM "public"."chats" c
+            JOIN "public"."messages" m ON c.id = m.chat_id
+            WHERE m.sender = c.consultant_id
+        ) all_interactions
         GROUP BY patient_id
     ),
-    -- CTE 4: last_completed_appointment
-    last_completed_appointment AS (
-        SELECT patient_id, MAX(date::date) AS last_appt_date
-        FROM "public"."appointment"
-        WHERE status = 'COMPLETED'
+    severe_side_effects AS (
+        SELECT patient_id, STRING_AGG(type, ', ') AS side_effects
+        FROM "public"."patientsideeffects"
+        WHERE creator = 'PATIENT' 
+          AND date >= (CURRENT_DATE - INTERVAL '7 days')
+          AND LOWER(type) NOT IN ('good', 'okay', 'great')
         GROUP BY patient_id
     ),
-    -- CTE 5: last_consultant_message (NEW)
-    last_consultant_message AS (
-        SELECT c.patient_id, MAX(m."messagedAt") AS last_message_date
-        FROM "public"."chats" c
-        JOIN "public"."messages" m ON c.id = m.chat_id
-        WHERE m.sender = c.consultant_id
-        GROUP BY c.patient_id
-    ),
-    -- CTE 6: meal_log_last_3_days
     meal_log_last_3_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."patientfoodlogs"
         WHERE date::date >= CURRENT_DATE - INTERVAL '3 days'
         GROUP BY patient_id
     ),
-    -- CTE 7: latest_weight
     latest_weight AS (
         SELECT patient_id, ROUND(value::numeric, 2) AS current_weight
         FROM (
@@ -641,14 +646,12 @@ WITH
         ) sub
         WHERE rn = 1
     ),
-    -- CTE 8: weight_log_last_7_days
     weight_log_last_7_days AS (
         SELECT patient_id, 'Yes' AS logged
         FROM "public"."metrics"
         WHERE name = 'BODY_WEIGHT' AND date::date >= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY patient_id
     ),
-    -- CTE 9: all_patient_interactions
     all_patient_interactions AS (
         SELECT patient_id, date::date AS interaction_date FROM "public"."activity"
         UNION
@@ -656,7 +659,6 @@ WITH
         UNION
         SELECT patient_id, date::date AS interaction_date FROM "public"."metrics"
     ),
-    -- CTE 10: activity_summary
     activity_summary AS (
         SELECT
             patient_id,
@@ -669,26 +671,24 @@ WITH
         GROUP BY patient_id
     )
 
--- FINAL SELECT
 SELECT
     TRIM(pb.firstname) AS "Patient Name",
+    pb.consultant_id AS "Consultant ID",
+    pb.consultant_name AS "Consultant Name",
+    pb.subscription_name AS "Subscription Name",
     os.user_onboarded AS "User Onboarded",
-    
     ROUND(pb.goal_weight::numeric, 2) AS "OnTrack/OffTrack",
-    -- UPDATED COLUMN: Days Since Last Interaction (Includes Messages)
-    (CURRENT_DATE - GREATEST(lci.last_note_date::date, lca.last_appt_date, lcm.last_message_date::date)) AS "Days Since Last Interaction",
-    
+    (CURRENT_DATE - lci.last_date) AS "Days Since Last Interaction",
+    COALESCE(sse.side_effects, 'None') AS "Recent Severe Side Effects",
     COALESCE(mll3d.logged, 'No') AS "Meal Log (3 days)",
     COALESCE(wll7d.logged, 'No') AS "Weight Log (7 days)",
     COALESCE(act.active_days_last_7, 0) AS "Num Active days (in last 7 days)",
     act.last_active_day AS "Last Active Day"
-
 FROM
     patient_base pb
 LEFT JOIN onboarding_status os ON pb.id = os.patient_id
 LEFT JOIN last_consultant_interaction lci ON pb.id = lci.patient_id
-LEFT JOIN last_completed_appointment lca ON pb.id = lca.patient_id
-LEFT JOIN last_consultant_message lcm ON pb.id = lcm.patient_id -- JOIN NEW CTE
+LEFT JOIN severe_side_effects sse ON pb.id = sse.patient_id
 LEFT JOIN meal_log_last_3_days mll3d ON pb.id = mll3d.patient_id
 LEFT JOIN latest_weight lw ON pb.id = lw.patient_id
 LEFT JOIN weight_log_last_7_days wll7d ON pb.id = wll7d.patient_id
@@ -1223,7 +1223,7 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'patient_ops@early.fit', 
+    'kartik@early.fit', 
     
 ]
 
@@ -1262,7 +1262,7 @@ def print_table_preview(data: List[Dict[Any, Any]]):
     print(f"\nTotal rows: {len(data)}")
 
 
-def generate_email_table(data: List[Dict[Any, Any]], title: str = None, conditional_formatting: bool = True) -> str:
+def generate_email_table(data: List[Dict[Any, Any]], title: str = None, conditional_formatting: bool = True, exclude_columns: List[str] = None) -> str:
     """Generate an email-compatible HTML table from JSON data using CSS classes"""
     if not data:
         return '<p class="no-data">No data available</p>'
@@ -1270,6 +1270,10 @@ def generate_email_table(data: List[Dict[Any, Any]], title: str = None, conditio
     # Filter out metadata columns that shouldn't be displayed
     all_columns = list(data[0].keys())
     columns = [col for col in all_columns if not col.startswith("__") and col != "_cell_classes__"]
+    
+    # Filter out excluded columns if specified
+    if exclude_columns:
+        columns = [col for col in columns if col not in exclude_columns]
     
     def get_cell_class_and_style(column_name: str, value: Any) -> tuple:
         """Determine cell class and optional inline style based on value"""
@@ -1446,8 +1450,10 @@ def generate_multiple_tables_email(tables: List[tuple], title: str = "Data Repor
             ''')
             
             use_formatting = heading in ["Coach +App User analytics", "GLP User analytics", "Full Analytics"]
+            # Exclude consultant columns and subscription name from Coach +App and GLP tables
+            exclude_cols = ["Consultant ID", "Consultant Name", "Subscription Name"] if heading in ["Coach +App User analytics", "GLP User analytics"] else None
             print(f"    DEBUG: Generating HTML for table '{heading}' with {len(data)} rows")
-            table_html = generate_email_table(data, title=None, conditional_formatting=use_formatting)
+            table_html = generate_email_table(data, title=None, conditional_formatting=use_formatting, exclude_columns=exclude_cols)
             html_parts.append(table_html)
     
     if closing:
@@ -1610,67 +1616,85 @@ def send_report_email():
     # Update Query 1 (Summary Comparison) with On/Off Track counts from Query 2 and Query 3
     update_summary_with_detailed_track_counts(tables_data)
     
-    # Generate "Actions Required" table from "Full Analytics" data
-    actions_map = {
-        "Goal Set": [],
-        "Smart Scale Logging": [],
-        "Meal Logging": [],
-        "Weight Logging": [],
-        "No Interaction (2+ days)": []
-    }
+    # Generate "Actions Required" tables grouped by consultant from Query 2 and Query 3 data
+    coach_app_data = next((data for heading, data in tables_data if heading == "Coach +App User analytics"), [])
+    glp_data = next((data for heading, data in tables_data if heading == "GLP User analytics"), [])
     
-    full_analytics_data = next((data for heading, data in tables_data if heading == "Full Analytics"), [])
+    # Combine data from both queries
+    all_patients_data = []
+    if coach_app_data:
+        all_patients_data.extend(coach_app_data)
+    if glp_data:
+        all_patients_data.extend(glp_data)
     
-    if full_analytics_data:
-        print(f"\n    Generating 'Actions Required' table from {len(full_analytics_data)} Full Analytics records...")
-            
-        for row in full_analytics_data:
+    if all_patients_data:
+        print(f"\n    Generating 'Actions Required' tables by consultant from {len(all_patients_data)} patient records...")
+        
+        # Group patients by consultant
+        consultant_actions = {}  # consultant_name -> {action_type -> [patient_names]}
+        
+        for row in all_patients_data:
             patient_name = row.get("Patient Name", "Unknown")
+            consultant_name = row.get("Consultant Name", "Unknown Consultant")
             
-            if row.get("Goals Set") == 'No':
-                actions_map["Goal Set"].append(patient_name)
+            # Initialize consultant's action map if not exists
+            if consultant_name not in consultant_actions:
+                consultant_actions[consultant_name] = {
+                    "User Not Onboarded": [],
+                    "Meal Logging": [],
+                    "Weight Logging": [],
+                    "No Interaction (2+ days)": []
+                }
             
-            if row.get("Smart Scale Logged") == 'No':
-                actions_map["Smart Scale Logging"].append(patient_name)
+            # Check User Onboarded
+            if row.get("User Onboarded", "").strip().lower() == 'no':
+                consultant_actions[consultant_name]["User Not Onboarded"].append(patient_name)
             
-            if row.get("Meal Logged") == 'No':
-                actions_map["Meal Logging"].append(patient_name)
+            # Check Meal Log (3 days)
+            if row.get("Meal Log (3 days)", "").strip().lower() == 'no':
+                consultant_actions[consultant_name]["Meal Logging"].append(patient_name)
             
-            if row.get("Weight Log (7 days)") == 'No':
-                actions_map["Weight Logging"].append(patient_name)
+            # Check Weight Log (7 days)
+            if row.get("Weight Log (7 days)", "").strip().lower() == 'no':
+                consultant_actions[consultant_name]["Weight Logging"].append(patient_name)
             
-            # Add patients with no interaction in last 2+ days with days count
+            # Check Days Since Last Interaction
             days_since_interaction = row.get("Days Since Last Interaction")
             if days_since_interaction is not None:
                 try:
                     days = float(days_since_interaction)
                     if days >= 2:
                         days_int = int(days)
-                        actions_map["No Interaction (2+ days)"].append(f"{patient_name} ({days_int} days)")
+                        consultant_actions[consultant_name]["No Interaction (2+ days)"].append(f"{patient_name} ({days_int} days)")
                 except (ValueError, TypeError):
                     pass
         
-        # Convert map to list of dicts for table generation
-        actions_data = []
-        for action, patients in actions_map.items():
-            if patients:
-                actions_data.append({
-                    "Action": action,
-                    "Patients Pending": ", ".join(sorted(patients))
-                })
+        # Create action tables for each consultant
+        insert_index = 1
+        for i, (heading, _) in enumerate(tables_data):
+            if heading == "Summary Comparison":
+                insert_index = i + 1
+                break
         
-        if actions_data:
-            # Insert after "Summary Comparison" (which should be at index 0)
-            insert_index = 1
-            for i, (heading, _) in enumerate(tables_data):
-                if heading == "Summary Comparison":
-                    insert_index = i + 1
-                    break
+        tables_added = 0
+        for consultant_name, actions_map in sorted(consultant_actions.items()):
+            # Convert map to list of dicts for table generation
+            actions_data = []
+            for action, patients in actions_map.items():
+                if patients:
+                    actions_data.append({
+                        "Action": action,
+                        "Patients Pending": ", ".join(sorted(patients))
+                    })
             
-            tables_data.insert(insert_index, ("Actions Required", actions_data))
-            print(f"        [OK] Generated {len(actions_data)} grouped action items")
-        else:
-            print("        [INFO] No actions required found")
+            if actions_data:
+                table_name = f"Actions Required for {consultant_name}"
+                tables_data.insert(insert_index + tables_added, (table_name, actions_data))
+                tables_added += 1
+                print(f"        [OK] Generated '{table_name}' with {len(actions_data)} action items")
+        
+        if tables_added == 0:
+            print("        [INFO] No actions required found for any consultant")
     
     if not tables_data or not any(data for _, data in tables_data):
 
