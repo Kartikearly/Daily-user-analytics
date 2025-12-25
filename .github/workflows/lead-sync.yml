@@ -1,0 +1,48 @@
+name: Daily Lead Sync
+
+on:
+ # Runs at UTC time: 03:30 (09:00 AM IST)
+  schedule:
+    - cron: '30 3 * * *'  # UTC time: 03:30 (09:00 AM IST)
+  
+  # Allow manual triggering
+  workflow_dispatch:
+  
+  # Optional: Run on push to main branch (for testing)
+  # push:
+  #   branches:
+  #     - main
+
+jobs:
+  lead-sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install apscheduler pytz
+      
+      - name: Run Lead Sync Script
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          CRM_API_BASE_URL: ${{ secrets.CRM_API_BASE_URL }}
+          CRM_WEBHOOK_API_KEY: ${{ secrets.CRM_WEBHOOK_API_KEY }}
+        run: |
+          cd lead_sync
+          python lead_sync_script.py
+      
+      - name: Check exit status
+        if: failure()
+        run: |
+          echo "Lead sync script failed. Check the output above for details."
