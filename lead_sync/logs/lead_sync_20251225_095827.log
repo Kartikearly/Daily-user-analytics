@@ -1,0 +1,55 @@
+2025-12-25 09:58:27,329 - __main__ - INFO - Logging initialized. Log file: C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\logs\lead_sync_20251225_095827.log
+2025-12-25 09:58:27,329 - __main__ - INFO - Log level: INFO
+2025-12-25 09:58:27,329 - __main__ - INFO - Starting lead sync script
+2025-12-25 09:58:27,329 - __main__ - INFO - Arguments: verbose=True, debug=False
+2025-12-25 09:58:27,329 - __main__ - INFO - Validating configuration...
+2025-12-25 09:58:27,329 - __main__ - INFO - Configuration validation passed
+2025-12-25 09:58:27,329 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:27,329 - __main__ - INFO - Starting lead sync process
+2025-12-25 09:58:27,329 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:27,329 - __main__ - INFO - Step 1: Fetching new signups from external API
+2025-12-25 09:58:27,329 - __main__ - INFO - External API Base URL: https://earlyfit-api.saurabhsakhuja.com/api/v1
+2025-12-25 09:58:27,329 - __main__ - INFO - API Key present: Yes
+2025-12-25 09:58:27,329 - __main__ - INFO - Making POST request to https://earlyfit-api.saurabhsakhuja.com/api/v1/analytics
+2025-12-25 09:58:27,530 - __main__ - INFO - Query successful. Records returned: 5
+2025-12-25 09:58:27,530 - __main__ - INFO - Fetched 5 new signup records
+2025-12-25 09:58:27,531 - __main__ - INFO - Step 2: Fetching active customers to filter out
+2025-12-25 09:58:27,531 - __main__ - INFO - Making POST request to https://earlyfit-api.saurabhsakhuja.com/api/v1/analytics
+2025-12-25 09:58:27,708 - __main__ - INFO - Query successful. Records returned: 117
+2025-12-25 09:58:27,710 - __main__ - INFO - Found 117 active customers
+2025-12-25 09:58:27,711 - __main__ - INFO - Normalized 117 unique active customer phone numbers
+2025-12-25 09:58:27,711 - __main__ - INFO - Step 3: Filtering out active customers from new signups
+2025-12-25 09:58:27,711 - __main__ - INFO - Filtered out 1 active customers
+2025-12-25 09:58:27,711 - __main__ - INFO - Remaining records to process: 4
+2025-12-25 09:58:27,711 - __main__ - INFO - Step 4: Transforming and validating data
+2025-12-25 09:58:27,711 - __main__ - INFO - Successfully transformed 4 leads
+2025-12-25 09:58:27,711 - __main__ - INFO - Step 5: Ingesting leads into CRM
+2025-12-25 09:58:27,711 - __main__ - INFO - CRM API Base URL: https://sc-api.early.fit/api/v1
+2025-12-25 09:58:27,711 - __main__ - INFO - CRM API Key present: Yes
+2025-12-25 09:58:27,711 - __main__ - INFO - Ingesting lead 1/4: 6514925206
+2025-12-25 09:58:27,711 - __main__ - INFO - Making POST request to https://sc-api.early.fit/api/v1/webhook/lead-ingestion for phone: 6514925206
+2025-12-25 09:58:27,976 - __main__ - INFO - Successfully ingested lead: 6514925206
+2025-12-25 09:58:27,976 - __main__ - INFO - Successfully ingested lead 6514925206
+2025-12-25 09:58:27,976 - __main__ - INFO - Ingesting lead 2/4: 9999640342
+2025-12-25 09:58:27,976 - __main__ - INFO - Making POST request to https://sc-api.early.fit/api/v1/webhook/lead-ingestion for phone: 9999640342
+2025-12-25 09:58:28,196 - __main__ - INFO - Successfully ingested lead: 9999640342
+2025-12-25 09:58:28,196 - __main__ - INFO - Successfully ingested lead 9999640342
+2025-12-25 09:58:28,196 - __main__ - INFO - Ingesting lead 3/4: 9650606904
+2025-12-25 09:58:28,196 - __main__ - INFO - Making POST request to https://sc-api.early.fit/api/v1/webhook/lead-ingestion for phone: 9650606904
+2025-12-25 09:58:28,453 - __main__ - INFO - Successfully ingested lead: 9650606904
+2025-12-25 09:58:28,453 - __main__ - INFO - Successfully ingested lead 9650606904
+2025-12-25 09:58:28,453 - __main__ - INFO - Ingesting lead 4/4: 9717000094
+2025-12-25 09:58:28,453 - __main__ - INFO - Making POST request to https://sc-api.early.fit/api/v1/webhook/lead-ingestion for phone: 9717000094
+2025-12-25 09:58:28,686 - __main__ - INFO - Successfully ingested lead: 9717000094
+2025-12-25 09:58:28,689 - __main__ - INFO - Successfully ingested lead 9717000094
+2025-12-25 09:58:28,689 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:28,689 - __main__ - INFO - Lead sync process completed
+2025-12-25 09:58:28,689 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:28,689 - __main__ - INFO - Final Statistics:
+2025-12-25 09:58:28,689 - __main__ - INFO -   Total Fetched: 5
+2025-12-25 09:58:28,689 - __main__ - INFO -   Active Customers Filtered: 1
+2025-12-25 09:58:28,689 - __main__ - INFO -   Successfully Ingested: 4
+2025-12-25 09:58:28,689 - __main__ - INFO -   Already Exists: 0
+2025-12-25 09:58:28,689 - __main__ - INFO -   Failed: 0
+2025-12-25 09:58:28,689 - __main__ - INFO -   Errors: 0
+2025-12-25 09:58:28,689 - __main__ - INFO - Script completed successfully

@@ -1,9 +1,9 @@
 name: Daily Lead Sync
 
 on:
- # Runs at UTC time: 03:30 (09:00 AM IST)
+  # Runs daily at 9:00 AM IST (03:30 UTC)
   schedule:
-    - cron: '30 3 * * *'  # UTC time: 03:30 (09:00 AM IST)
+    - cron: '30 3 * * *'  # 03:30 UTC = 09:00 AM IST
   
   # Allow manual triggering
   workflow_dispatch:
@@ -40,9 +40,12 @@ jobs:
           CRM_WEBHOOK_API_KEY: ${{ secrets.CRM_WEBHOOK_API_KEY }}
         run: |
           cd lead_sync
-          python lead_sync_script.py
+          python lead_sync_script.py -v
       
-      - name: Check exit status
+      - name: Upload logs on failure
         if: failure()
-        run: |
-          echo "Lead sync script failed. Check the output above for details."
+        uses: actions/upload-artifact@v4
+        with:
+          name: lead-sync-logs
+          path: lead_sync/logs/
+          retention-days: 7

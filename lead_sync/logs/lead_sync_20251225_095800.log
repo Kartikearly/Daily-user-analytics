@@ -1,0 +1,84 @@
+2025-12-25 09:58:00,147 - __main__ - INFO - Logging initialized. Log file: C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\logs\lead_sync_20251225_095800.log
+2025-12-25 09:58:00,147 - __main__ - INFO - Log level: INFO
+2025-12-25 09:58:00,147 - __main__ - INFO - Starting lead sync script
+2025-12-25 09:58:00,147 - __main__ - INFO - Arguments: verbose=True, debug=False
+2025-12-25 09:58:00,147 - __main__ - INFO - Validating configuration...
+2025-12-25 09:58:00,147 - __main__ - INFO - Configuration validation passed
+2025-12-25 09:58:00,147 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:00,162 - __main__ - INFO - Starting lead sync process
+2025-12-25 09:58:00,162 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:00,162 - __main__ - INFO - Step 1: Fetching new signups from external API
+2025-12-25 09:58:00,162 - __main__ - INFO - External API Base URL: https://earlyfit-api.saurabhsakhuja.com/api/v1
+2025-12-25 09:58:00,162 - __main__ - INFO - API Key present: Yes
+2025-12-25 09:58:00,162 - __main__ - INFO - Making POST request to https://earlyfit-api.saurabhsakhuja.com/api/v1/analytics
+2025-12-25 09:58:00,578 - __main__ - INFO - Query successful. Records returned: 5
+2025-12-25 09:58:00,578 - __main__ - INFO - Fetched 5 new signup records
+2025-12-25 09:58:00,578 - __main__ - INFO - Step 2: Fetching active customers to filter out
+2025-12-25 09:58:00,578 - __main__ - INFO - Making POST request to https://earlyfit-api.saurabhsakhuja.com/api/v1/analytics
+2025-12-25 09:58:00,769 - __main__ - INFO - Query successful. Records returned: 117
+2025-12-25 09:58:00,770 - __main__ - INFO - Found 117 active customers
+2025-12-25 09:58:00,770 - __main__ - INFO - Normalized 117 unique active customer phone numbers
+2025-12-25 09:58:00,770 - __main__ - INFO - Step 3: Filtering out active customers from new signups
+2025-12-25 09:58:00,770 - __main__ - INFO - Filtered out 1 active customers
+2025-12-25 09:58:00,770 - __main__ - INFO - Remaining records to process: 4
+2025-12-25 09:58:00,770 - __main__ - INFO - Step 4: Transforming and validating data
+2025-12-25 09:58:00,770 - __main__ - ERROR - Error transforming record 1: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,772 - __main__ - ERROR - 'NoneType' object has no attribute 'strip'
+Traceback (most recent call last):
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 476, in sync_leads
+    lead_data = transform_external_data_to_lead(record)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 355, in transform_external_data_to_lead
+    email = external_record.get('email', '').strip()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,774 - __main__ - ERROR - Error transforming record 2: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,774 - __main__ - ERROR - 'NoneType' object has no attribute 'strip'
+Traceback (most recent call last):
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 476, in sync_leads
+    lead_data = transform_external_data_to_lead(record)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 355, in transform_external_data_to_lead
+    email = external_record.get('email', '').strip()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,774 - __main__ - ERROR - Error transforming record 3: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,776 - __main__ - ERROR - 'NoneType' object has no attribute 'strip'
+Traceback (most recent call last):
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 476, in sync_leads
+    lead_data = transform_external_data_to_lead(record)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 355, in transform_external_data_to_lead
+    email = external_record.get('email', '').strip()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,777 - __main__ - ERROR - Error transforming record 4: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,778 - __main__ - ERROR - 'NoneType' object has no attribute 'strip'
+Traceback (most recent call last):
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 476, in sync_leads
+    lead_data = transform_external_data_to_lead(record)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\lead_sync_script.py", line 355, in transform_external_data_to_lead
+    email = external_record.get('email', '').strip()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,779 - __main__ - INFO - Successfully transformed 0 leads
+2025-12-25 09:58:00,779 - __main__ - INFO - Step 5: Ingesting leads into CRM
+2025-12-25 09:58:00,779 - __main__ - INFO - CRM API Base URL: https://sc-api.early.fit/api/v1
+2025-12-25 09:58:00,779 - __main__ - INFO - CRM API Key present: Yes
+2025-12-25 09:58:00,779 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:00,779 - __main__ - INFO - Lead sync process completed
+2025-12-25 09:58:00,779 - __main__ - INFO - ================================================================================
+2025-12-25 09:58:00,779 - __main__ - INFO - Final Statistics:
+2025-12-25 09:58:00,779 - __main__ - INFO -   Total Fetched: 5
+2025-12-25 09:58:00,779 - __main__ - INFO -   Active Customers Filtered: 1
+2025-12-25 09:58:00,782 - __main__ - INFO -   Successfully Ingested: 0
+2025-12-25 09:58:00,782 - __main__ - INFO -   Already Exists: 0
+2025-12-25 09:58:00,782 - __main__ - INFO -   Failed: 4
+2025-12-25 09:58:00,782 - __main__ - INFO -   Errors: 4
+2025-12-25 09:58:00,782 - __main__ - WARNING - Errors encountered during sync:
+2025-12-25 09:58:00,782 - __main__ - WARNING -   - Error transforming record 1: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,782 - __main__ - WARNING -   - Error transforming record 2: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,782 - __main__ - WARNING -   - Error transforming record 3: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,783 - __main__ - WARNING -   - Error transforming record 4: AttributeError: 'NoneType' object has no attribute 'strip'
+2025-12-25 09:58:00,783 - __main__ - WARNING - Script completed with errors or no records processed

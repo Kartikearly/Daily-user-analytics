@@ -1,0 +1,11 @@
+2025-12-25 09:42:45,110 - __main__ - INFO - Logging initialized. Log file: C:\Users\KartikGupta\Desktop\mail and automations\Daily-user-analytics\lead_sync\logs\lead_sync_20251225_094245.log
+2025-12-25 09:42:45,110 - __main__ - INFO - Log level: INFO
+2025-12-25 09:42:45,110 - __main__ - INFO - Starting lead sync script
+2025-12-25 09:42:45,110 - __main__ - INFO - Arguments: verbose=True, debug=False
+2025-12-25 09:42:45,111 - __main__ - INFO - Validating configuration...
+2025-12-25 09:42:45,111 - __main__ - ERROR - API_KEY is not set in .env file
+2025-12-25 09:42:45,111 - __main__ - ERROR - CRM_WEBHOOK_API_KEY is not set in .env file
+2025-12-25 09:42:45,111 - __main__ - ERROR - Configuration validation failed with 2 error(s)
+2025-12-25 09:42:45,112 - __main__ - ERROR - Configuration validation failed. Please fix the following errors:
+2025-12-25 09:42:45,112 - __main__ - ERROR -   - API_KEY is not set in .env file
+2025-12-25 09:42:45,112 - __main__ - ERROR -   - CRM_WEBHOOK_API_KEY is not set in .env file
