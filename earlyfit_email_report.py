@@ -55,10 +55,6 @@ WITH
                     AND p.subscription_end_date >= CURRENT_DATE 
                     AND s.type = 'Coach+App'
                     -- Removed 7-day filter: AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
-                    AND LOWER(TRIM(p.firstname)) NOT IN (
-                        'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                        'parushi', 'bhaumik', 'archana', 'mrinal'
-                    )
                     AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
                     AND p.nutritionist_id IN (8, 22, 24)
             ),
@@ -136,10 +132,6 @@ WITH
                     AND s.type = 'GLP'
                     -- Removed 7-day filter: AND (CURRENT_DATE - p.subscription_start_date::date) >= 7
                     AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
-                    AND LOWER(TRIM(p.firstname)) NOT IN (
-                        'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                        'parushi', 'bhaumik', 'archana', 'mrinal'
-                    )
                     AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
                     AND p.nutritionist_id IN (8, 22, 24)
             ),
@@ -217,10 +209,6 @@ WITH
                     AND s.type = 'Coach+App'
                     -- Changed 7-day filter to 0-day (ensure start date <= yesterday)
                     AND ( (CURRENT_DATE - INTERVAL '1 day')::date - p.subscription_start_date::date ) >= 0
-                    AND LOWER(TRIM(p.firstname)) NOT IN (
-                        'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                        'parushi', 'bhaumik', 'archana', 'mrinal'
-                    )
                     AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
                     AND p.nutritionist_id IN (8, 22, 24)
             ),
@@ -299,10 +287,6 @@ WITH
                     -- Changed 7-day filter to 0-day
                     AND ( (CURRENT_DATE - INTERVAL '1 day')::date - p.subscription_start_date::date ) >= 0
                     AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
-                    AND LOWER(TRIM(p.firstname)) NOT IN (
-                        'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                        'parushi', 'bhaumik', 'archana', 'mrinal'
-                    )
                     AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
                     AND p.nutritionist_id IN (8, 22, 24)
             ),
@@ -467,10 +451,6 @@ WITH
             AND p.status = 'ACTIVE_SUBSCRIPTION'
             AND p.subscription_end_date >= CURRENT_DATE
             AND s.type = 'Coach+App'
-            AND LOWER(TRIM(p.firstname)) NOT IN (
-                'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                'parushi', 'bhaumik', 'archana', 'mrinal'
-            )
             AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
             AND p.nutritionist_id IN (8, 22, 24)
     ),
@@ -592,10 +572,6 @@ WITH
             AND p.subscription_end_date >= CURRENT_DATE
             AND s.type = 'GLP'
             AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
-            AND LOWER(TRIM(p.firstname)) NOT IN (
-                'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                'parushi', 'bhaumik', 'archana', 'mrinal'
-            )
             AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
             AND p.nutritionist_id IN (8, 22, 24)
     ),
@@ -708,10 +684,6 @@ WITH
             AND p.subscription_end_date >= CURRENT_DATE
             AND s.type = 'Coach+App'
             -- Removed 7-day filter logic
-            AND LOWER(TRIM(p.firstname)) NOT IN (
-                'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                'parushi', 'bhaumik', 'archana', 'mrinal'
-            )
             AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
             AND p.nutritionist_id IN (8, 22, 24)
     ),
@@ -728,10 +700,6 @@ WITH
             AND s.type = 'GLP'
             AND LOWER(s.name) NOT IN ('metabolic diagnosis test', 'metabolic screening', 'pre glp assesment')
             -- Removed 7-day filter logic
-            AND LOWER(TRIM(p.firstname)) NOT IN (
-                'vandana', 'shalini', 'anushree', 'anita', 'nutan', 'dr. geeta', 'manish',
-                'parushi', 'bhaumik', 'archana', 'mrinal'
-            )
             AND p.firstname IS NOT NULL AND TRIM(p.firstname) <> ''
             AND p.nutritionist_id IN (8, 22, 24)
     ),
@@ -1223,7 +1191,7 @@ EMAIL_CONFIG = {
 
 # Recipients List
 RECIPIENTS = [
-    'patient_ops@early.fit', 
+    'kartik@early.fit', 
     
 ]
 
